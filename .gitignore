@@ -1,0 +1,26 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.kotlin
+
+# Secrets: the repo is public (open source). Never commit these.
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
+*service-account*.json
+.env
+.env.*
+.claude/settings.local.json

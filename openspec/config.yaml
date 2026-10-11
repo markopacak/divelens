@@ -1,0 +1,113 @@
+schema: spec-driven
+
+context: |
+  Product: DiveLens (working name). Native Android app that auto-corrects underwater
+  scuba photos AND videos (blue-green cast, missing red, flat contrast). Flow: one-tap
+  auto-correct -> before/after compare -> fine-tune with sliders -> full-resolution export.
+  Paid app with a free trial of N items via Google Play Billing. No accounts, no backend.
+
+  Privacy (hard constraint): all processing on-device; media never leaves the device.
+  Public claim is exactly "Photos and videos never leave your device." Never claim
+  "no network permission": Play Billing may add permissions. Check the merged manifest.
+
+  Stack (settled): Kotlin, Jetpack Compose, coroutines. minSdk 29 (Android 10).
+  Photo Picker, androidx.exifinterface, MediaStore, Coil.
+  applicationId com.markopacak.divelens must never change (it is fixed after publishing).
+
+  Processing architecture (settled):
+  - ONE GPU correction pipeline in GLSL ES 3.0, shared by photos and video.
+    Photos: offscreen EGL rendering. Video: Media3 Transformer with a custom GlEffect
+    for export; Media3 ExoPlayer with the same effect for live preview.
+    No AGSL-only path, no RenderScript.
+  - Auto-analysis (image statistics, parameter estimation) in plain Kotlin on a
+    downscaled copy, in a pure JVM module (e.g. :core:analysis) unit-testable against
+    reference images without an emulator. Add OpenCV only if CLAHE-style local
+    contrast proves necessary.
+
+  Correction pipeline (defaults derived from one RefApp2 sample; estimate per
+  image from channel statistics, never hard-code):
+  1. Red channel reconstruction (main effect), roughly R' = 0.26R + 1.56G - 0.67B
+     (mean red ~17% -> ~42% on the sample).
+  2. Cast removal: Lab a* ~-22 -> ~0, b* slightly warmer; gray-world or percentile
+     white balance on the downscaled copy.
+  3. Tone: slightly lower black point, S-curve with ~+13% contrast, highlights
+     lifted, about -0.1 EV.
+  4. Sharpening ~2x on fine detail plus clarity/local contrast ~1.3x at medium scale.
+  5. No crop, rotation, vignette, or lens/fisheye correction (GoPro wide-angle photos
+     are processed like any other photo and keep their fisheye look).
+  Tuning reference: before/after pairs exported from RefApp2 and RefApp; originals
+  stay outside the repo (personal media, GPS metadata).
+
+  Video: estimate parameters on frames sampled every N seconds, smooth them, and
+  interpolate between samples (color drifts with depth; per-frame analysis flickers).
+  Pass audio through unchanged; keep original creation date and location metadata.
+  Long or 4K clips run in a foreground service with progress, cancel, and a
+  free-storage check. Service type: mediaProcessing on Android 15+, dataSync on 10-14.
+  HDR (10-bit HLG/PQ) input in v1: tone-map to SDR with Media3, then correct; export SDR.
+
+  Billing: trial counter stored on device; gate checks happen at export. Purchases must
+  be acknowledged within 3 days or Play refunds them automatically;
+  verification is on-device. Billing only works once a build is on at least the
+  internal testing track.
+
+  Product decisions (2026-10-11):
+  - Monetization: free download, one-time unlock (non-consumable in-app product).
+    Restore the purchase from Play on reinstall or a new device; never charge twice.
+  - Trial: N = 3 exports; a photo and a video each count as 1, whatever the length.
+    Counter is stored locally (may reset on reinstall; accepted). No watermarking.
+  - Batch processing IS in v1: the user can select and correct multiple items at once.
+    Each item in a batch counts toward the trial.
+  - "DiveLens" is a temporary name; keep the user-visible name in one string resource.
+
+  Open source (hard constraint): the repository is public. Never commit credentials
+  or sensitive data: signing keystores and passwords, Play Console service-account
+  JSON, API tokens, or personal media/location data. Read them from outside the repo
+  (gitignored local files such as keystore.properties, environment variables, or CI
+  secrets) and document the expected names. Builds must work without them for
+  contributors (debug signing, billing disabled or stubbed). Assume anyone can read
+  and modify the code, including the on-device purchase checks (accepted).
+  License: GPL-3.0-only with a section 7 exception for Google Play Billing / Play
+  services libraries (see LICENSE and NOTICE). New dependencies must be
+  GPLv3-compatible (Apache-2.0, MIT, BSD, LGPL are fine); flag anything else.
+
+  Planned changes, in order (one capability per area):
+  1 add-import-export (import-export), 2 add-auto-correction (auto-correction),
+  3 add-preview-compare (preview-compare), 4 add-manual-adjustment (manual-adjustment),
+  5 add-video-processing (video-processing), 6 add-trial-and-purchase (licensing).
+
+  Out of scope for v1: RAW photos, cloud sync, social features, on-device ML models,
+  lens/fisheye correction.
+  Planned after v1: end-to-end HDR video (correct in 10-bit and export HDR instead of
+  tone-mapping to SDR). Keep the v1 pipeline from blocking it (e.g. don't hard-code
+  8-bit formats where a float or 10-bit path is just as easy).
+
+# Project context (optional)
+# Add only constraints that should guide OpenSpec artifacts and workflows.
+# Include constraints an agent cannot infer by reading the code.
+# Keep general project documentation and discoverable codebase facts out.
+# Example:
+#   context: |
+#     Designs and tasks must cover Windows, macOS, and Linux
+#     Write all artifacts in Spanish
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

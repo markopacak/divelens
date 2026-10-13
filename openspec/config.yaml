@@ -40,7 +40,9 @@ context: |
 
   Video: estimate parameters on frames sampled every N seconds, smooth them, and
   interpolate between samples (color drifts with depth; per-frame analysis flickers).
-  Pass audio through unchanged; keep original creation date and location metadata.
+  Pass audio through unchanged; keep original creation date. Location is NOT kept in
+  v1 exports (photos or videos): the system photo picker strips it, and reading it would
+  need a broad media permission prompt. Originals keep their location.
   Long or 4K clips run in a foreground service with progress, cancel, and a
   free-storage check. Service type: mediaProcessing on Android 15+, dataSync on 10-14.
   HDR (10-bit HLG/PQ) input in v1: tone-map to SDR with Media3, then correct; export SDR.
@@ -77,6 +79,8 @@ context: |
 
   Out of scope for v1: RAW photos, cloud sync, social features, on-device ML models,
   lens/fisheye correction.
+  Planned after v1: optional "keep location in exports" setting (document picker +
+  ACCESS_MEDIA_LOCATION, off by default), only if users ask for it.
   Planned after v1: end-to-end HDR video (correct in 10-bit and export HDR instead of
   tone-mapping to SDR). Keep the v1 pipeline from blocking it (e.g. don't hard-code
   8-bit formats where a float or 10-bit path is just as easy).

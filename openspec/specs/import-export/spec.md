@@ -149,12 +149,12 @@ Before writing each export, the system SHALL check whether that export is allowe
 - **WHEN** the user exports a photo and the check allows it
 - **THEN** the photo is exported normally
 
-### Requirement: Processing applies to exported pixels only
-Every export SHALL pass the photo's pixels through the app's processing step before encoding. In this version the processing step SHALL leave pixels unchanged, apart from the loss inherent in JPEG re-encoding.
+### Requirement: Exports are corrected
+Every export SHALL pass the photo's pixels through the app's automatic colour correction (see the auto-correction capability) before encoding. The correction SHALL change only the exported copy, never the original, and SHALL keep the photo's pixel dimensions.
 
-#### Scenario: Unprocessed export looks like the original
-- **WHEN** the user exports a photo in this version
-- **THEN** the export is visually indistinguishable from the original at 100% zoom
+#### Scenario: Exported photo is corrected
+- **WHEN** the user exports an underwater photo with a blue-green cast
+- **THEN** the export in the gallery is colour-corrected, and the original file is byte-for-byte unchanged
 
 ### Requirement: On-device only
 Importing and exporting SHALL happen entirely on the device. Photos and their metadata SHALL NOT be sent off the device.

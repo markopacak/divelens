@@ -43,4 +43,4 @@ python3 -m venv .venv && .venv/bin/pip install -r tools/reference/requirements.t
 
 ## Model
 
-See `openspec/changes/add-auto-correction/design.md` (D1–D3, D10), or the auto-correction spec once that change is archived. The statistics use a 200 px wide area-averaged copy. That width and the downscale method are part of the model, and the app implements the same `box_downscale` bounds. `smooth.py` is the reference for applying the correction: a guided filter on a 1024 px working copy, so grain in flat water is not amplified.
+See the auto-correction spec (`openspec/specs/auto-correction/spec.md`) and the archived design, `openspec/changes/archive/2026-10-17-add-auto-correction/design.md` (D1–D3, D10). The statistics use a 200 px wide area-averaged copy. That width and the downscale method are part of the model, and the app implements the same `box_downscale` bounds. `smooth.py` is the reference for applying the correction: a guided filter on a 1024 px working copy, so grain in flat water is not amplified.

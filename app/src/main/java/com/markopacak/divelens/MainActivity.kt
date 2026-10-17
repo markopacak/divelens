@@ -13,9 +13,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.markopacak.divelens.batch.BatchExporter
+import com.markopacak.divelens.correction.CorrectionPhotoProcessor
 import com.markopacak.divelens.export.AlwaysAllowExportGate
 import com.markopacak.divelens.export.ExportItemUseCase
-import com.markopacak.divelens.export.IdentityPhotoProcessor
 import com.markopacak.divelens.export.MediaStorePhotoWriter
 import com.markopacak.divelens.importer.PhotoImporter
 import com.markopacak.divelens.ui.ImportExportScreen
@@ -47,11 +47,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Manual wiring. Later changes swap the processor (auto-correction) and the gate (licensing). */
+    /** Manual wiring. A later change swaps the gate (licensing). */
     private fun createViewModel(): ImportExportViewModel {
         val resolver = applicationContext.contentResolver
         val importer = PhotoImporter(resolver)
-        val writer = MediaStorePhotoWriter(resolver, applicationContext.cacheDir, IdentityPhotoProcessor)
+        val writer = MediaStorePhotoWriter(resolver, applicationContext.cacheDir, CorrectionPhotoProcessor())
         val exportItem = ExportItemUseCase(AlwaysAllowExportGate, writer)
         return ImportExportViewModel(importer::import, BatchExporter { exportItem(it) })
     }

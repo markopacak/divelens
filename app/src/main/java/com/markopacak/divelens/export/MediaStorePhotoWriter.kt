@@ -76,6 +76,7 @@ class MediaStorePhotoWriter(
             resolver.openInputStream(source)?.use { stream ->
                 BitmapFactory.decodeStream(stream, null, BitmapFactory.Options().apply {
                     inPreferredConfig = Bitmap.Config.ARGB_8888
+                    inMutable = true // lets the processor correct in place instead of allocating a second full-size bitmap
                 })
             }
         } catch (e: FileNotFoundException) {

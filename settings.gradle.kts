@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "DiveLens"
 include(":app")
+include(":core:analysis")

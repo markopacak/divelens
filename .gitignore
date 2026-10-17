@@ -27,3 +27,7 @@ secrets.properties
 
 # Personal reference media for tuning (never commit)
 /trainingset/
+
+# Python (tools/reference)
+__pycache__/
+.venv/

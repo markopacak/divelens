@@ -24,19 +24,23 @@ context: |
     reference images without an emulator. Add OpenCV only if CLAHE-style local
     contrast proves necessary.
 
-  Correction pipeline (defaults derived from one RefApp2 sample; estimate per
-  image from channel statistics, never hard-code):
-  1. Red channel reconstruction (main effect), roughly R' = 0.26R + 1.56G - 0.67B
-     (mean red ~17% -> ~42% on the sample).
-  2. Cast removal: Lab a* ~-22 -> ~0, b* slightly warmer; gray-world or percentile
-     white balance on the downscaled copy.
-  3. Tone: slightly lower black point, S-curve with ~+13% contrast, highlights
-     lifted, about -0.1 EV.
-  4. Sharpening ~2x on fine detail plus clarity/local contrast ~1.3x at medium scale.
-  5. No crop, rotation, vignette, or lens/fisheye correction (GoPro wide-angle photos
-     are processed like any other photo and keep their fisheye look).
-  Tuning reference: before/after pairs exported from RefApp2 and RefApp; originals
-  stay outside the repo (personal media, GPS metadata).
+  Correction pipeline (derived from 14 RefApp before/after pairs, 2026-10; see the
+  auto-correction spec and tools/reference/). One colour matrix per image on encoded
+  values, parameters estimated per image on a 200 px box-downscaled copy:
+  1. Red rebuilt from green minus some blue: R' = R + a(G - beta*B) + gamma*a, with a
+     from mean R/G and B/G. Red is never stretched on its own (that made open water red).
+  2. Green and blue: levels stretch between a low percentile and the 99.9th percentile,
+     gain capped at 3, black point at most 0.45 (bright open water is not turned black).
+  3. Red is never lowered, except that dark water gets no red cast (red may not end
+     above green there). RefApp reddens dark water at high strength; DiveLens must not.
+  4. The colour shift is smoothed with a guided filter (coefficients on a 1024 px copy)
+     so grain in flat water is not amplified; edges stay sharp.
+  5. Strength s scales the colour shift (like the RefApp slider); one default.
+  6. No sharpening, clarity or S-curve in auto-correction (RefApp shows none). No crop,
+     rotation, vignette, or lens/fisheye correction.
+  Coefficients come only from tools/reference/fit.py; never hand-tune them in code.
+  Tuning reference: before/after pairs exported from RefApp (and one RefApp2);
+  originals stay outside the repo (personal media, GPS metadata).
 
   Video: estimate parameters on frames sampled every N seconds, smooth them, and
   interpolate between samples (color drifts with depth; per-frame analysis flickers).

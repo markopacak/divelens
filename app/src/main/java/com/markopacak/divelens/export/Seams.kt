@@ -5,11 +5,11 @@ import com.markopacak.divelens.media.MediaItem
 
 /** Turns decoded pixels into the pixels to export. The correction pipeline plugs in here. */
 fun interface PhotoProcessor {
-    /** May return [input] itself. The caller recycles both bitmaps afterwards. */
+    /** [input] is a mutable `ARGB_8888` bitmap. May return [input] itself, changed in place. The caller recycles both bitmaps afterwards. */
     suspend fun process(input: Bitmap): Bitmap
 }
 
-/** Leaves pixels unchanged. Replaced by the correction pipeline in add-auto-correction. */
+/** Leaves pixels unchanged. Used by tests that check export without correction. */
 object IdentityPhotoProcessor : PhotoProcessor {
     override suspend fun process(input: Bitmap): Bitmap = input
 }

@@ -1,13 +1,9 @@
 # Spec Delta
 
-## MODIFIED Requirements
+## ADDED Requirements
 
-### Requirement: Manage the working set
-The system SHALL let the user remove individual photos from the working set, or clear it, before exporting. Removing a photo SHALL NOT affect the original file. The working set SHALL hold at most 50 photos. When a selection would exceed the limit, the system SHALL add photos in the order the picker returned them until the limit is reached, leave out the rest, and tell the user how many were left out and that the limit is 50. While the working set is full, selecting more photos SHALL be unavailable, with a message explaining the limit.
-
-#### Scenario: Remove one photo
-- **WHEN** the user removes a photo from the working set
-- **THEN** it no longer appears in the working set and is not exported, and the original stays in the gallery
+### Requirement: Working-set limit
+The working set SHALL hold at most 50 photos. A selection that would exceed the limit SHALL add photos in the order the picker returned them until the limit is reached and tell the user how many were left out and that the limit is 50. While the working set is full, selecting more photos SHALL be unavailable, with a message explaining the limit.
 
 #### Scenario: Selection exceeds the limit
 - **WHEN** the working set holds 45 photos and the user selects 8 more
@@ -16,6 +12,8 @@ The system SHALL let the user remove individual photos from the working set, or 
 #### Scenario: Working set is full
 - **WHEN** the working set holds 50 photos
 - **THEN** selecting more photos is unavailable and the screen explains the limit, until a photo is removed or the set is cleared
+
+## MODIFIED Requirements
 
 ### Requirement: Back navigation
 The system back action SHALL return to the start screen when photos are selected, SHALL ask for confirmation before cancelling a running export, and SHALL leave the app only from the start screen. In the photo viewer, Back SHALL return to the working-set grid without changing the working set.

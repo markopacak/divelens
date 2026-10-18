@@ -67,4 +67,4 @@
 
 ## Workflow follow-up
 
-- Archive the change after review; the `import-export` delta adds "Back in the viewer" to "Back navigation".
+- Archive the change after review; the `import-export` delta adds "Back in the viewer" to "Back navigation" and the new requirement "Working-set limit".

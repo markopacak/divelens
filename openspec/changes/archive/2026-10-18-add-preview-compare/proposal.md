@@ -31,7 +31,7 @@ The correction is now applied at export, but the user only sees it afterwards, i
 ### Modified Capabilities
 - `import-export`:
   - "Back navigation" gains a scenario: Back in the viewer returns to the grid without clearing the working set.
-  - "Manage the working set" gains the limit of 50 photos.
+  - New requirement "Working-set limit": at most 50 photos.
 
 ## Impact
 

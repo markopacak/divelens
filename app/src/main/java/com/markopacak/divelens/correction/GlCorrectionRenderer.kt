@@ -28,51 +28,68 @@ data class CorrectedRegion(val bandTop: Int, val bandBottom: Int, val bandDoneX:
 class GpuCorrectionException(val corrected: CorrectedRegion, cause: Throwable) : RuntimeException(cause.message, cause)
 
 /**
- * Applies a [Correction] to a mutable `ARGB_8888` bitmap in place on the GPU (design D4, D10):
- * an offscreen EGL context, the shift maps as float textures, tiles of at most [maxTile] pixels
- * uploaded to a texture, one draw with the correction shader into a framebuffer object, read back
- * and written into the same bitmap. Each pixel's result depends only on the pixel, its position in
- * the photo and the maps, so tiles cannot leave seams.
+ * Applies a [Correction] to mutable `ARGB_8888` bitmaps in place on the GPU (add-auto-correction D4, D10;
+ * add-preview-compare D5): an offscreen EGL context, the shift maps as float textures, tiles of at most
+ * [maxTile] pixels uploaded to a texture, one draw with the correction shader into a framebuffer object, read
+ * back and written into the same bitmap. Each pixel's result depends only on the pixel, its position in the
+ * photo and the maps, so tiles cannot leave seams.
  *
- * EGL contexts are bound to a thread: call [apply] from one thread. The context is created and
- * released within the call.
+ * EGL contexts are bound to a thread: use a [Session] from one thread only ([GlThread]).
  */
 class GlCorrectionRenderer(private val maxTile: Int = 2048) {
 
-    /** @throws GpuCorrectionException when EGL or GL fails, saying which pixels were already corrected. */
+    /**
+     * Corrects the whole photo [bitmap] with a session opened and closed for the call.
+     * @throws GpuCorrectionException when EGL or GL fails, saying which pixels were already corrected.
+     */
     fun apply(bitmap: Bitmap, correction: Correction) {
-        require(bitmap.isMutable) { "bitmap must be mutable" }
         require(bitmap.width == correction.width && bitmap.height == correction.height) { "correction is for another size" }
-        val progress = Progress()
-        try {
-            val egl = Egl()
+        openSession(correction).use { it.apply(bitmap, 0, 0, bitmap.width, bitmap.height) }
+    }
+
+    /**
+     * Keeps a context, the program and the map textures of [correction] for many [Session.apply] calls,
+     * such as the viewer's base image and tiles. Close it on the thread that opened it.
+     * @throws GpuCorrectionException when EGL or GL setup fails.
+     */
+    fun openSession(correction: Correction): Session = Session(correction)
+
+    inner class Session internal constructor(private val correction: Correction) : AutoCloseable {
+        private val egl: Egl
+        private var program = 0
+        private val ids = IntArray(4)
+        private val fbo = IntArray(1)
+        private val vao = IntArray(1)
+        private val tile: Int
+        private var originLocation = 0
+        private var imageSizeLocation = 0
+        private var strengthLocation = 0
+        private var closed = false
+
+        init {
             try {
-                egl.makeCurrent()
-                render(bitmap, correction, progress)
-            } finally {
-                egl.release()
+                egl = Egl()
+                try {
+                    egl.makeCurrent()
+                    val maxTexture = IntArray(1).also { GLES30.glGetIntegerv(GLES30.GL_MAX_TEXTURE_SIZE, it, 0) }[0]
+                    tile = min(maxTile, maxTexture)
+                    setUp()
+                } catch (e: Throwable) {
+                    releaseGl()
+                    egl.release()
+                    throw e
+                }
+            } catch (e: RuntimeException) {
+                throw GpuCorrectionException(CorrectedRegion.NONE, e)
             }
-        } catch (e: RuntimeException) {
-            throw GpuCorrectionException(progress.region, e)
         }
-    }
 
-    private class Progress {
-        var region = CorrectedRegion.NONE
-    }
-
-    private fun render(bitmap: Bitmap, correction: Correction, progress: Progress) {
-        val maxTexture = IntArray(1).also { GLES30.glGetIntegerv(GLES30.GL_MAX_TEXTURE_SIZE, it, 0) }[0]
-        val tile = min(maxTile, maxTexture)
-        val tw = min(tile, bitmap.width); val th = min(tile, bitmap.height)
-        val tiles = BitmapTiles(bitmap, tw, th)
-        val program = program()
-        val ids = IntArray(4); val fbo = IntArray(1); val vao = IntArray(1)
-        try {
+        private fun setUp() {
+            program = program()
             GLES30.glGenTextures(4, ids, 0)
             for (id in ids.take(2)) {
                 GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, id)
-                GLES30.glTexStorage2D(GLES30.GL_TEXTURE_2D, 1, GLES30.GL_RGBA8, tw, th)
+                GLES30.glTexStorage2D(GLES30.GL_TEXTURE_2D, 1, GLES30.GL_RGBA8, tile, tile)
                 GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_NEAREST)
                 GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_NEAREST)
             }
@@ -97,46 +114,82 @@ class GlCorrectionRenderer(private val maxTile: Int = 2048) {
             checkError("maps")
 
             GLES30.glUseProgram(program)
-            GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uStrength"), correction.params.strength)
-            GLES30.glUniform2f(GLES30.glGetUniformLocation(program, "uImageSize"), bitmap.width.toFloat(), bitmap.height.toFloat())
             GLES30.glUniform2i(GLES30.glGetUniformLocation(program, "uMapSize"), map.width, map.height)
             GLES30.glUniform1i(GLES30.glGetUniformLocation(program, "uSource"), 0)
             GLES30.glUniform1i(GLES30.glGetUniformLocation(program, "uMapA"), 1)
             GLES30.glUniform1i(GLES30.glGetUniformLocation(program, "uMapB"), 2)
-            val origin = GLES30.glGetUniformLocation(program, "uOrigin")
+            originLocation = GLES30.glGetUniformLocation(program, "uOrigin")
+            imageSizeLocation = GLES30.glGetUniformLocation(program, "uImageSize")
+            strengthLocation = GLES30.glGetUniformLocation(program, "uStrength")
             GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
             GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, ids[0])
             GLES30.glPixelStorei(GLES30.GL_PACK_ALIGNMENT, 1)
             GLES30.glDisable(GLES30.GL_BLEND)
             GLES30.glDisable(GLES30.GL_DITHER)
             checkError("setup")
+        }
 
-            var y = 0
-            while (y < bitmap.height) {
-                val h = min(th, bitmap.height - y)
-                var x = 0
-                while (x < bitmap.width) {
-                    val w = min(tw, bitmap.width - x)
-                    tiles.read(x, y, w, h)
-                    GLES30.glUniform2i(origin, x, y)
-                    GLES30.glTexSubImage2D(GLES30.GL_TEXTURE_2D, 0, 0, 0, w, h, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, tiles.buffer)
-                    GLES30.glViewport(0, 0, w, h)
-                    GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
-                    tiles.buffer.clear()
-                    GLES30.glReadPixels(0, 0, w, h, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, tiles.buffer)
-                    checkError("tile $x,$y")
-                    tiles.write(x, y, w, h)
-                    x += w
-                    progress.region = CorrectedRegion(y, y + h, x)
+        /**
+         * Corrects [bitmap] in place as the region at ([originX], [originY]) of the photo shown at
+         * [imageWidth]×[imageHeight], such as a tile of a sampled decode, at [strength].
+         * @throws GpuCorrectionException when GL fails, saying which pixels of [bitmap] were already corrected.
+         */
+        fun apply(
+            bitmap: Bitmap,
+            originX: Int,
+            originY: Int,
+            imageWidth: Int,
+            imageHeight: Int,
+            strength: Float = correction.params.strength,
+        ) {
+            require(bitmap.isMutable) { "bitmap must be mutable" }
+            check(!closed) { "session closed" }
+            var region = CorrectedRegion.NONE
+            try {
+                egl.makeCurrent()
+                GLES30.glUniform1f(strengthLocation, strength)
+                GLES30.glUniform2f(imageSizeLocation, imageWidth.toFloat(), imageHeight.toFloat())
+                val tw = min(tile, bitmap.width); val th = min(tile, bitmap.height)
+                val tiles = BitmapTiles(bitmap, tw, th)
+                var y = 0
+                while (y < bitmap.height) {
+                    val h = min(th, bitmap.height - y)
+                    var x = 0
+                    while (x < bitmap.width) {
+                        val w = min(tw, bitmap.width - x)
+                        tiles.read(x, y, w, h)
+                        GLES30.glUniform2i(originLocation, originX + x, originY + y)
+                        GLES30.glTexSubImage2D(GLES30.GL_TEXTURE_2D, 0, 0, 0, w, h, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, tiles.buffer)
+                        GLES30.glViewport(0, 0, w, h)
+                        GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
+                        tiles.buffer.clear()
+                        GLES30.glReadPixels(0, 0, w, h, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, tiles.buffer)
+                        checkError("tile $x,$y")
+                        tiles.write(x, y, w, h)
+                        x += w
+                        region = CorrectedRegion(y, y + h, x)
+                    }
+                    y += h
+                    region = CorrectedRegion(y, y, 0)
                 }
-                y += h
-                progress.region = CorrectedRegion(y, y, 0)
+            } catch (e: RuntimeException) {
+                throw GpuCorrectionException(region, e)
             }
-        } finally {
+        }
+
+        override fun close() {
+            if (closed) return
+            closed = true
+            runCatching { egl.makeCurrent() }
+            releaseGl()
+            egl.release()
+        }
+
+        private fun releaseGl() {
             GLES30.glDeleteVertexArrays(1, vao, 0)
             GLES30.glDeleteFramebuffers(1, fbo, 0)
             GLES30.glDeleteTextures(4, ids, 0)
-            GLES30.glDeleteProgram(program)
+            if (program != 0) GLES30.glDeleteProgram(program)
         }
     }
 

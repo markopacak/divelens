@@ -8,30 +8,38 @@ import com.markopacak.divelens.analysis.CorrectionAnalyzer
 import com.markopacak.divelens.analysis.CpuCorrection
 import com.markopacak.divelens.analysis.V1Model
 import com.markopacak.divelens.export.PhotoProcessor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
-import java.util.concurrent.Executors
 import kotlin.math.min
 
+/** Gives a photo's correction by source URI: the preview store, or the shared estimate (add-preview-compare D1). */
+fun interface CorrectionSource {
+    suspend fun correction(source: String): Correction
+}
+
 /**
- * The automatic correction for exports: estimates the photo's parameters and shift maps from
- * downscaled copies, then corrects the full-resolution bitmap in place on the GPU. If the GPU path fails, the same
- * correction runs on the CPU for the pixels the GPU did not finish (design D5). Returns [process]'s
- * input, which must be a mutable `ARGB_8888` bitmap.
+ * The automatic correction for exports: takes the photo's correction from [corrections], the same one the
+ * preview shows, then corrects the full-resolution bitmap in place on the GPU. If the GPU path fails, the same
+ * correction runs on the CPU for the pixels the GPU did not finish (add-auto-correction D5). Returns
+ * [process]'s input, which must be a mutable `ARGB_8888` bitmap.
+ *
+ * Without [corrections], or if it fails, the correction is estimated from the input bitmap itself, as before
+ * the preview existed; tests of in-memory bitmaps use that.
  */
 class CorrectionPhotoProcessor(
+    private val corrections: CorrectionSource? = null,
     private val strength: Float = V1Model.DEFAULT_STRENGTH,
     private val gpu: (Bitmap, Correction) -> Unit = GlCorrectionRenderer()::apply,
 ) : PhotoProcessor {
 
-    override suspend fun process(input: Bitmap): Bitmap {
+    override suspend fun process(source: String, input: Bitmap): Bitmap {
         val start = SystemClock.elapsedRealtime()
-        val correction = withContext(Dispatchers.Default) { estimate(input, strength) }
+        val correction = correctionFor(source, input)
         val estimated = SystemClock.elapsedRealtime()
         var path = "GPU"
         try {
-            withContext(glDispatcher) { gpu(input, correction) }
+            withContext(GlThread.dispatcher) { gpu(input, correction) }
         } catch (e: GpuCorrectionException) {
             Log.w(TAG, "GPU correction failed, finishing on the CPU", e)
             path = "CPU"
@@ -42,13 +50,22 @@ class CorrectionPhotoProcessor(
         return input
     }
 
+    private suspend fun correctionFor(source: String, input: Bitmap): Correction {
+        if (corrections != null) {
+            try {
+                return corrections.correction(source).at(input.width, input.height)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "no shared correction for $source, estimating from the decoded photo", e)
+            }
+        }
+        return withContext(Dispatchers.Default) { estimate(input, strength) }
+    }
+
     companion object {
         private const val TAG = "CorrectionProcessor"
         private const val BAND_ROWS = 64
-
-        /** EGL contexts are bound to a thread, so all GPU work runs on this one. */
-        private val glDispatcher = Executors.newSingleThreadExecutor { Thread(it, "divelens-gl").apply { isDaemon = true } }
-            .asCoroutineDispatcher()
 
         /** The correction for [bitmap], from downscaled copies built band by band (no second full-size bitmap). */
         fun estimate(bitmap: Bitmap, strength: Float = V1Model.DEFAULT_STRENGTH): Correction {

@@ -27,7 +27,11 @@ object TestMedia {
     fun jpegWithExif(name: String, width: Int = 400, height: Int = 300, withOffset: Boolean = true): Uri {
         val file = File.createTempFile("fixture", ".jpg", context.cacheDir)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        for (y in 0 until height) for (x in 0 until width) bitmap.setPixel(x, y, Color.rgb(40, 120 + x * 100 / width, 200 - y * 100 / height))
+        val row = IntArray(width)
+        for (y in 0 until height) {
+            for (x in 0 until width) row[x] = Color.rgb(40, 120 + x * 100 / width, 200 - y * 100 / height)
+            bitmap.setPixels(row, 0, width, 0, y, width, 1)
+        }
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
         bitmap.recycle()
         ExifInterface(file).apply {

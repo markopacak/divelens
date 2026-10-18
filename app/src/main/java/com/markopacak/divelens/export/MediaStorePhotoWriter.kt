@@ -88,7 +88,7 @@ class MediaStorePhotoWriter(
         var processed: Bitmap? = null
         try {
             coroutineContext.ensureActive()
-            processed = processor.process(decoded)
+            processed = processor.process(source.toString(), decoded)
             coroutineContext.ensureActive()
             val ok = temp.outputStream().buffered().use { processed.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
             if (!ok) throw ExportException(FailureReason.WriteFailed)

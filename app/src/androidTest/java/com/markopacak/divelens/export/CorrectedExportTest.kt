@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import com.markopacak.divelens.TestMedia
+import com.markopacak.divelens.correction.CorrectionEstimator
 import com.markopacak.divelens.correction.CorrectionPhotoProcessor
 import com.markopacak.divelens.importer.PhotoImporter
 import kotlinx.coroutines.runBlocking
@@ -18,10 +19,14 @@ import org.junit.Test
 class CorrectedExportTest {
     private val resolver = TestMedia.resolver
 
-    private fun writer() = MediaStorePhotoWriter(resolver, TestMedia.context.cacheDir, CorrectionPhotoProcessor(), TestMedia.TEST_ALBUM)
+    private val estimator = CorrectionEstimator(resolver)
+    private val processor = CorrectionPhotoProcessor({ estimator.estimate(Uri.parse(it)) })
 
-    private suspend fun export(source: Uri): Uri =
-        Uri.parse(writer().write(PhotoImporter(resolver).import(listOf(source)).accepted.single()))
+    private fun writer(processor: PhotoProcessor = this.processor) =
+        MediaStorePhotoWriter(resolver, TestMedia.context.cacheDir, processor, TestMedia.TEST_ALBUM)
+
+    private suspend fun export(source: Uri, processor: PhotoProcessor = this.processor): Uri =
+        Uri.parse(writer(processor).write(PhotoImporter(resolver).import(listOf(source)).accepted.single()))
 
     private fun decode(uri: Uri): Bitmap = resolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it)!! }
 
@@ -45,5 +50,24 @@ class CorrectedExportTest {
         val source = TestMedia.jpegWithExif("twice.jpg", 400, 300)
         val a = pixels(decode(export(source))); val b = pixels(decode(export(source)))
         assertArrayEquals(a, b)
+    }
+
+    /** Spec "Preview matches the export": the export applies the shared correction, as the CPU reference does. */
+    @Test fun exportAppliesTheSharedCorrection() = runBlocking {
+        val source = TestMedia.jpegWithExif("shared.jpg", 4800, 600) // wide enough for a sample size of 2
+        var exported: IntArray? = null
+        val capture = PhotoProcessor { s, input -> processor.process(s, input).also { exported = pixels(it) } }
+        export(source, capture)
+
+        val reference = decode(source).copy(Bitmap.Config.ARGB_8888, true)
+        CorrectionPhotoProcessor.applyOnCpu(reference, estimator.estimate(source))
+        val expected = pixels(reference)
+        val actual = exported!!
+        assertEquals(expected.size, actual.size)
+        var worst = 0
+        for (i in expected.indices) for (shift in intArrayOf(0, 8, 16)) {
+            worst = maxOf(worst, kotlin.math.abs((expected[i] shr shift and 0xff) - (actual[i] shr shift and 0xff)))
+        }
+        assertTrue("largest channel difference $worst", worst <= 1)
     }
 }

@@ -16,3 +16,12 @@ with the Google Play Billing Library or other Google Play services client
 libraries (or a modified version of those libraries), containing parts covered
 by the terms of their respective proprietary licenses, the licensors of this
 program grant you additional permission to convey the resulting work.
+
+Third-party components
+
+This program includes the following component under its own license:
+
+- Telephoto (zoomable), Copyright Saket Narayan,
+  https://github.com/saket/telephoto, Apache License, Version 2.0
+  (https://www.apache.org/licenses/LICENSE-2.0). Used for zoom and pan gestures
+  in the photo viewer.

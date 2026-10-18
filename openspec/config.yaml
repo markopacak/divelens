@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Product: DiveLens (working name). Native Android app that auto-corrects underwater
+  Product: DiveLens. Native Android app that auto-corrects underwater
   scuba photos AND videos (blue-green cast, missing red, flat contrast). Flow: one-tap
   auto-correct -> before/after compare -> fine-tune with sliders -> full-resolution export.
   Paid app with a free trial of N items via Google Play Billing. No accounts, no backend.
@@ -63,7 +63,7 @@ context: |
     Counter is stored locally (may reset on reinstall; accepted). No watermarking.
   - Batch processing IS in v1: the user can select and correct multiple items at once.
     Each item in a batch counts toward the trial.
-  - "DiveLens" is a temporary name; keep the user-visible name in one string resource.
+  - The name "DiveLens" is final; keep the user-visible name in one string resource.
 
   Open source (hard constraint): the repository is public. Never commit credentials
   or sensitive data: signing keystores and passwords, Play Console service-account

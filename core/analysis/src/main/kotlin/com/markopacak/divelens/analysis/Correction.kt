@@ -1,7 +1,13 @@
 package com.markopacak.divelens.analysis
 
 /** Everything needed to correct one photo of [width]×[height] pixels: model parameters and shift maps. */
-class Correction(val params: CorrectionParams, val map: CorrectionMap, val width: Int, val height: Int)
+class Correction(val params: CorrectionParams, val map: CorrectionMap, val width: Int, val height: Int) {
+    /**
+     * The same correction for the photo at another size, such as the full resolution of a reduced decode or a
+     * sampled copy for display. The maps are resolution-independent, so nothing is copied.
+     */
+    fun at(width: Int, height: Int): Correction = Correction(params, map, width, height)
+}
 
 /**
  * Builds a photo's [Correction] from its ARGB pixels fed in row bands from the top, so the full

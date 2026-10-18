@@ -38,7 +38,7 @@ class CorrectionPhotoProcessorTest {
     fun gpuFailureBeforeAnyTileFallsBackToCpu() = runBlocking {
         val input = source()
         val processor = CorrectionPhotoProcessor(gpu = { _, _ -> throw GpuCorrectionException(CorrectedRegion.NONE, GlException("no EGL")) })
-        val out = processor.process(input)
+        val out = processor.process("test", input)
         assertSame(input, out)
         assertArrayEquals(cpuReference(), pixels(out))
     }
@@ -55,12 +55,12 @@ class CorrectionPhotoProcessorTest {
             c.drawBitmap(corrected, Rect(0, 100, 256, 200), Rect(0, 100, 256, 200), null)
             throw GpuCorrectionException(region, GlException("lost context"))
         })
-        assertArrayEquals(expected, pixels(processor.process(source())))
+        assertArrayEquals(expected, pixels(processor.process("test", source())))
     }
 
     @Test
     fun realGpuPathMatchesCpuWithinOneStep() = runBlocking {
-        val gpu = pixels(CorrectionPhotoProcessor().process(source()))
+        val gpu = pixels(CorrectionPhotoProcessor().process("test", source()))
         val cpu = cpuReference()
         for (i in cpu.indices) for (s in intArrayOf(16, 8, 0)) {
             val d = kotlin.math.abs((cpu[i] shr s and 0xff) - (gpu[i] shr s and 0xff))

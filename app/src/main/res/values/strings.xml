@@ -19,6 +19,10 @@
     <string name="cancel_export">Cancel export</string>
     <string name="keep_exporting">Keep exporting</string>
 
+    <string name="preview_correcting">Correcting…</string>
+    <string name="preview_unavailable">Preview unavailable</string>
+    <string name="detail_unavailable">Full detail unavailable for this photo</string>
+
     <string name="status_exporting">Exporting…</string>
     <string name="status_exported">Exported</string>
     <string name="status_failed">Failed</string>
@@ -33,6 +37,11 @@
 
     <string name="rejected_title">Some files were not added</string>
     <string name="reject_unsupported">format not supported (JPEG and HEIC only)</string>
+    <plurals name="left_out">
+        <item quantity="one">%1$d photo was left out. A batch holds at most %2$d photos.</item>
+        <item quantity="other">%1$d photos were left out. A batch holds at most %2$d photos.</item>
+    </plurals>
+    <string name="limit_reached">A batch holds at most %d photos. Remove some or clear the set to add more.</string>
     <string name="reject_too_large">photo is too large (over 100 megapixels)</string>
 
     <string name="reason_storage">not enough storage</string>

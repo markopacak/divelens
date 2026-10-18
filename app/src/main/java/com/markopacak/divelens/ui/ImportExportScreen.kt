@@ -1,6 +1,9 @@
 package com.markopacak.divelens.ui
 
+import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,10 +29,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -37,15 +42,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.markopacak.divelens.R
+import com.markopacak.divelens.correction.PreviewEntry
+import com.markopacak.divelens.correction.ViewerRenderer
 import com.markopacak.divelens.importer.RejectionReason
 import com.markopacak.divelens.media.FailureReason
 import com.markopacak.divelens.media.ItemStatus
 import com.markopacak.divelens.media.WorkingItem
+import com.markopacak.divelens.media.WorkingSet
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImportExportScreen(
     state: ImportExportUiState,
+    previews: Map<String, PreviewEntry<Bitmap>> = emptyMap(),
     onSelectPhotos: () -> Unit,
     onRemove: (String) -> Unit,
     onClear: () -> Unit,
@@ -53,6 +62,11 @@ fun ImportExportScreen(
     onCancel: () -> Unit,
     onDismissSummary: () -> Unit,
     onDismissRejections: () -> Unit,
+    viewer: ViewerRenderer? = null,
+    onOpen: (Int) -> Unit = {},
+    onCloseViewer: () -> Unit = {},
+    onViewerPage: (Int) -> Unit = {},
+    viewerStrength: Float? = null,
 ) {
     val items = state.workingSet.items
     val running = state.batch as? BatchUi.Running
@@ -79,8 +93,11 @@ fun ImportExportScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(items, key = { it.item.source }) { item ->
-                        PhotoCell(item, removable = running == null, onRemove = { onRemove(item.item.source) })
+                    itemsIndexed(items, key = { _, it -> it.item.source }) { index, item ->
+                        PhotoCell(
+                            item, previews[item.item.source], removable = running == null,
+                            onOpen = { onOpen(index) }.takeIf { viewer != null }, onRemove = { onRemove(item.item.source) },
+                        )
                     }
                 }
                 if (running != null) {
@@ -96,8 +113,17 @@ fun ImportExportScreen(
                         Text(stringResource(R.string.cancel))
                     }
                 } else {
+                    if (state.workingSet.isFull) {
+                        Text(
+                            stringResource(R.string.limit_reached, WorkingSet.LIMIT),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onSelectPhotos) { Text(stringResource(R.string.add_photos)) }
+                        OutlinedButton(onClick = onSelectPhotos, enabled = !state.workingSet.isFull) {
+                            Text(stringResource(R.string.add_photos))
+                        }
                         TextButton(onClick = onClear) { Text(stringResource(R.string.clear)) }
                         Button(onClick = onExport, modifier = Modifier.weight(1f)) {
                             Text(pluralStringResource(R.plurals.export_photos, items.size, items.size))
@@ -121,14 +147,22 @@ fun ImportExportScreen(
             text = { Text(stringResource(R.string.cancel_export_message)) },
         )
     }
+    val viewing = state.viewing
+    if (viewer != null && viewing != null && viewing in items.indices) {
+        // Over the grid, so the grid keeps its scroll position; its Back handler is composed earlier and yields to this one.
+        ViewerScreen(items, viewing, viewer, onViewerPage, onCloseViewer, viewerStrength)
+    }
     (state.batch as? BatchUi.Finished)?.let { SummaryDialog(it, onDismissSummary) }
-    if (state.rejections.isNotEmpty() && state.batch !is BatchUi.Finished) {
+    if ((state.rejections.isNotEmpty() || state.leftOut > 0) && state.batch !is BatchUi.Finished) {
         AlertDialog(
             onDismissRequest = onDismissRejections,
             confirmButton = { TextButton(onClick = onDismissRejections) { Text(stringResource(R.string.ok)) } },
             title = { Text(stringResource(R.string.rejected_title)) },
             text = {
                 Column {
+                    if (state.leftOut > 0) {
+                        Text(pluralStringResource(R.plurals.left_out, state.leftOut, state.leftOut, WorkingSet.LIMIT))
+                    }
                     state.rejections.forEach { Text("${it.displayName}: ${stringResource(it.reason.label())}") }
                 }
             },
@@ -137,15 +171,31 @@ fun ImportExportScreen(
 }
 
 @Composable
-private fun PhotoCell(item: WorkingItem, removable: Boolean, onRemove: () -> Unit) {
+private fun PhotoCell(item: WorkingItem, preview: PreviewEntry<Bitmap>?, removable: Boolean, onOpen: (() -> Unit)?, onRemove: () -> Unit) {
     Column {
-        Box {
-            AsyncImage(
-                model = item.item.source,
-                contentDescription = item.item.displayName,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-            )
+        Box(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier) {
+            val thumbnail = (preview as? PreviewEntry.Ready)?.thumbnail
+            if (thumbnail != null) {
+                val image = remember(thumbnail) { thumbnail.asImageBitmap() }
+                Image(
+                    bitmap = image,
+                    contentDescription = item.item.displayName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f).testTag("corrected_thumbnail"),
+                )
+            } else {
+                // The original until the corrected thumbnail exists, or if it cannot be made.
+                AsyncImage(
+                    model = item.item.source,
+                    contentDescription = item.item.displayName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                )
+                val label = if (preview is PreviewEntry.Failed) R.string.preview_unavailable else R.string.preview_correcting
+                Surface(color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.align(Alignment.TopStart)) {
+                    Text(stringResource(label), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))
+                }
+            }
             statusLabel(item.status)?.let {
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.align(Alignment.BottomStart)) {
                     Text(it, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))

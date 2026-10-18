@@ -39,6 +39,7 @@ python3 -m venv .venv && .venv/bin/pip install -r tools/reference/requirements.t
 - It writes each pair at 1200 px wide with EXIF orientation applied, the reference resized to the original's size, and a `mask.png` that excludes the watermark.
 - `fit.py --loso` takes several minutes: it refits once per held-out scene.
 - `fit.py` prints the coefficients that go into `V1Model` in `:core:analysis`. Its defaults are the app's look (H2). The alternative looks kept in `V1Model` are fitted with `--gain-cap 2.0 --no-red-cap` (E) and additionally `--black-mean-fraction 0.5` (F).
+- `draft_check.py` checks that estimating the correction from a reduced JPEG decode (as the app's preview and export do, sample size keeping the width ≥ 2048 px) gives nearly the same result as the full-resolution estimate: mean ΔE at most 0.5 per photo. `--sample N` forces a sample size.
 - `fixture.py` writes `core/analysis/src/test/resources/parity.txt` from synthetic images, so the Kotlin port is checked against `fit.py` and `smooth.py`. Rerun it after changing the model or its coefficients.
 
 ## Model

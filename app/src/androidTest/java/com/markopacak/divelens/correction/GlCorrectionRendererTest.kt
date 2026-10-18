@@ -75,4 +75,45 @@ class GlCorrectionRendererTest {
         }
         bmp.recycle()
     }
+
+    private fun pixels(b: Bitmap) = IntArray(b.width * b.height).also { b.getPixels(it, 0, b.width, 0, 0, b.width, b.height) }
+
+    @Test
+    fun sessionTileEqualsTheOneShotResultOfTheSameRectangle() {
+        val w = 1800; val h = 1200
+        val source = bitmap(w, h)
+        val correction = CorrectionPhotoProcessor.estimate(source)
+        val whole = source.copy(Bitmap.Config.ARGB_8888, true)
+        GlCorrectionRenderer().apply(whole, correction)
+
+        val x0 = 700; val y0 = 300; val tw = 512; val th = 512
+        val tile = Bitmap.createBitmap(source, x0, y0, tw, th).copy(Bitmap.Config.ARGB_8888, true)
+        GlCorrectionRenderer().openSession(correction).use { it.apply(tile, x0, y0, w, h) }
+        val expected = IntArray(tw * th).also { whole.getPixels(it, 0, tw, x0, y0, tw, th) }
+        assertEquals(expected.toList(), pixels(tile).toList())
+    }
+
+    @Test
+    fun sampledTileMatchesCpu() {
+        val w = 2400; val h = 1600
+        val correction = CorrectionPhotoProcessor.estimate(bitmap(w, h))
+        // A tile of the photo decoded at 1/4: 600×400, tile at (100, 50).
+        val sw = w / 4; val sh = h / 4
+        val x0 = 100; val y0 = 50; val tw = 300; val th = 200
+        val tile = bitmap(tw, th) // any pixels; what matters is that GPU and CPU treat the same position alike
+        val cpu = pixels(tile).also { CpuCorrection.applyInPlace(it, correction.at(sw, sh), x0, y0, tw, th) }
+        GlCorrectionRenderer().openSession(correction).use { session ->
+            session.apply(tile, x0, y0, sw, sh)
+        }
+        assertClose(cpu, pixels(tile), "sampled tile")
+    }
+
+    @Test
+    fun sessionStrengthOverridesTheCorrections() {
+        val bmp = bitmap(400, 300)
+        val correction = CorrectionPhotoProcessor.estimate(bmp)
+        val original = pixels(bmp)
+        GlCorrectionRenderer().openSession(correction).use { it.apply(bmp, 0, 0, 400, 300, strength = 0f) }
+        assertEquals(original.toList(), pixels(bmp).toList())
+    }
 }

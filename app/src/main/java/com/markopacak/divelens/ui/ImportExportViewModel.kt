@@ -1,10 +1,14 @@
 package com.markopacak.divelens.ui
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.markopacak.divelens.batch.BatchEvent
 import com.markopacak.divelens.batch.BatchExporter
+import com.markopacak.divelens.correction.PhotoPreviewStore
+import com.markopacak.divelens.correction.PreviewEntry
+import com.markopacak.divelens.correction.ViewerRenderer
 import com.markopacak.divelens.export.ItemResult
 import com.markopacak.divelens.importer.ImportResult
 import com.markopacak.divelens.importer.Rejection
@@ -16,6 +20,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -29,16 +35,34 @@ data class ImportExportUiState(
     val workingSet: WorkingSet = WorkingSet(),
     val importing: Boolean = false,
     val rejections: List<Rejection> = emptyList(),
+    /** Photos of the last selections that did not fit within [WorkingSet.LIMIT]. */
+    val leftOut: Int = 0,
+    /** Index in the working set of the photo shown full screen, or null when the grid is shown. */
+    val viewing: Int? = null,
     val batch: BatchUi = BatchUi.Idle,
 )
 
 class ImportExportViewModel(
     private val importPhotos: suspend (List<Uri>) -> ImportResult,
     private val batchExporter: BatchExporter,
+    /** Corrected thumbnails and corrections per photo; follows the working set. */
+    private val previewStore: PhotoPreviewStore<Bitmap>? = null,
+    /** Renders the full-screen viewer; null disables it. */
+    val viewer: ViewerRenderer? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ImportExportUiState())
     val state: StateFlow<ImportExportUiState> = _state.asStateFlow()
+
+    val previews: StateFlow<Map<String, PreviewEntry<Bitmap>>> = previewStore?.entries ?: MutableStateFlow(emptyMap())
+
+    init {
+        if (previewStore != null) {
+            viewModelScope.launch {
+                _state.map { s -> s.workingSet.items.map { it.item.source } }.distinctUntilChanged().collect { previewStore.setPhotos(it) }
+            }
+        }
+    }
 
     private var batchJob: Job? = null
 
@@ -48,25 +72,38 @@ class ImportExportViewModel(
         viewModelScope.launch {
             val result = importPhotos(uris)
             _state.update {
+                val added = it.workingSet.addWithinLimit(result.accepted)
                 it.copy(
                     importing = false,
-                    workingSet = it.workingSet.add(result.accepted),
+                    workingSet = added.set,
                     rejections = it.rejections + result.rejected,
+                    leftOut = it.leftOut + added.leftOut,
                 )
             }
         }
     }
 
-    fun dismissRejections() = _state.update { it.copy(rejections = emptyList()) }
+    fun openViewer(index: Int) = _state.update { if (index in it.workingSet.items.indices) it.copy(viewing = index) else it }
+
+    fun closeViewer() = _state.update { it.copy(viewing = null) }
+
+    /** The viewer shows [index]: prepare it and its neighbours first and keep their corrections. */
+    fun onViewerPage(index: Int) {
+        val items = _state.value.workingSet.items
+        val sources = listOf(index, index + 1, index - 1).filter { it in items.indices }.map { items[it].item.source }
+        previewStore?.let { store -> viewModelScope.launch { store.prioritize(sources) } }
+    }
+
+    fun dismissRejections() = _state.update { it.copy(rejections = emptyList(), leftOut = 0) }
 
     fun remove(source: String) {
         if (isRunning()) return
-        _state.update { it.copy(workingSet = it.workingSet.remove(source)) }
+        _state.update { it.copy(workingSet = it.workingSet.remove(source), viewing = null) }
     }
 
     fun clear() {
         if (isRunning()) return
-        _state.update { it.copy(workingSet = it.workingSet.clear(), batch = BatchUi.Idle) }
+        _state.update { it.copy(workingSet = it.workingSet.clear(), batch = BatchUi.Idle, viewing = null) }
     }
 
     fun export() {

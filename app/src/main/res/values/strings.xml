@@ -1,21 +1,24 @@
 <resources>
     <string name="app_name">DiveLens</string>
 
-    <string name="empty_state">Pick underwater photos to correct and export.</string>
-    <string name="select_photos">Select photos</string>
+    <string name="empty_state">Pick underwater photos and videos to correct and export.</string>
+    <string name="select_photos">Select photos and videos</string>
     <string name="add_photos">Add</string>
+    <string name="adding_items">Adding photos and videos…</string>
     <string name="clear">Clear</string>
     <string name="remove">Remove</string>
     <string name="cancel">Cancel</string>
     <string name="ok">OK</string>
     <plurals name="export_photos">
-        <item quantity="one">Export %d photo</item>
-        <item quantity="other">Export %d photos</item>
+        <item quantity="one">Export %d item</item>
+        <item quantity="other">Export %d items</item>
     </plurals>
     <string name="export_progress">Exporting %1$d of %2$d</string>
+    <string name="notification_channel_export">Export progress</string>
+    <string name="notification_exporting_title">Exporting to the gallery</string>
 
     <string name="cancel_export_title">Cancel export?</string>
-    <string name="cancel_export_message">Photos already exported stay in the gallery.</string>
+    <string name="cancel_export_message">Items already exported stay in the gallery.</string>
     <string name="cancel_export">Cancel export</string>
     <string name="keep_exporting">Keep exporting</string>
 
@@ -23,18 +26,20 @@
     <string name="preview_unavailable">Preview unavailable</string>
     <string name="detail_unavailable">Full detail unavailable for this photo</string>
 
-    <string name="adjust">Adjust</string>
-    <string name="strength">Strength</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+
+    <string name="correction_strength">Correction strength</string>
     <string name="percent">%d%%</string>
     <string name="strength_auto">Auto</string>
     <string name="reset">Reset</string>
     <string name="apply_to_all">Apply to all</string>
-    <string name="done">Done</string>
     <plurals name="applied_to_all">
-        <item quantity="one">Strength %1$d%% applied to %2$d photo</item>
-        <item quantity="other">Strength %1$d%% applied to %2$d photos</item>
+        <item quantity="one">Strength %1$d%% applied to %2$d item</item>
+        <item quantity="other">Strength %1$d%% applied to %2$d items</item>
     </plurals>
 
+    <string name="status_queued">Queued</string>
     <string name="status_exporting">Exporting…</string>
     <string name="status_exported">Exported</string>
     <string name="status_failed">Failed</string>
@@ -43,21 +48,22 @@
     <string name="summary_title">Export finished</string>
     <string name="summary_cancelled_title">Export cancelled</string>
     <plurals name="summary_exported">
-        <item quantity="one">%d photo saved to the gallery.</item>
-        <item quantity="other">%d photos saved to the gallery.</item>
+        <item quantity="one">%d item saved to the gallery.</item>
+        <item quantity="other">%d items saved to the gallery.</item>
     </plurals>
 
     <string name="rejected_title">Some files were not added</string>
-    <string name="reject_unsupported">format not supported (JPEG and HEIC only)</string>
+    <string name="reject_unsupported">format not supported (photos: JPEG, HEIC; videos: MP4, MOV in H.264 or HEVC)</string>
     <plurals name="left_out">
-        <item quantity="one">%1$d photo was left out. A batch holds at most %2$d photos.</item>
-        <item quantity="other">%1$d photos were left out. A batch holds at most %2$d photos.</item>
+        <item quantity="one">%1$d item was left out. A batch holds at most %2$d items.</item>
+        <item quantity="other">%1$d items were left out. A batch holds at most %2$d items.</item>
     </plurals>
-    <string name="limit_reached">A batch holds at most %d photos. Remove some or clear the set to add more.</string>
+    <string name="limit_reached">A batch holds at most %d items. Remove some or clear the set to add more.</string>
     <string name="reject_too_large">photo is too large (over 100 megapixels)</string>
+    <string name="reject_too_large_for_device">video is too large for this device</string>
 
     <string name="reason_storage">not enough storage</string>
     <string name="reason_unreadable">file could not be read</string>
-    <string name="reason_memory">not enough memory to process this photo</string>
+    <string name="reason_memory">not enough memory to process this item</string>
     <string name="reason_write">could not be saved</string>
 </resources>

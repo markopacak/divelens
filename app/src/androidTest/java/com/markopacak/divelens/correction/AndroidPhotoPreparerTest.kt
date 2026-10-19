@@ -2,6 +2,7 @@ package com.markopacak.divelens.correction
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import com.markopacak.divelens.TestMedia
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -52,5 +53,31 @@ class AndroidPhotoPreparerTest {
         var worst = 0
         for (i in a.indices) for (c in intArrayOf(16, 8, 0)) worst = maxOf(worst, kotlin.math.abs((a[i] shr c and 0xff) - (b[i] shr c and 0xff)))
         assertTrue("largest channel difference $worst", worst <= 2)
+    }
+
+    /** add-video-processing D5: a video's thumbnail is its frame at 1 s, corrected, in display orientation. */
+    @Test fun videoThumbnailIsTheCorrectedFrameAtOneSecond() = runBlocking {
+        val source = TestMedia.driftVideo() // 640×360, rotation 90
+        val prepared = preparer.prepare(source.toString())
+        val thumb = prepared.thumbnail
+        assertEquals(0, prepared.rotation) // the frame comes in display orientation
+        assertEquals(216 to 384, thumb.width to thumb.height)
+
+        val frame = MediaMetadataRetriever().run {
+            try {
+                setDataSource(TestMedia.context, source)
+                getScaledFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST, 768, 768)!!
+            } finally {
+                release()
+            }
+        }
+        val expected = AndroidPhotoPreparer.downscale(frame, AndroidPhotoPreparer.THUMBNAIL_SIZE)
+        CorrectionPhotoProcessor.applyOnCpu(expected, prepared.correction.at(expected.width, expected.height))
+        val a = IntArray(expected.width * expected.height).also { expected.getPixels(it, 0, expected.width, 0, 0, expected.width, expected.height) }
+        val b = IntArray(a.size).also { thumb.getPixels(it, 0, thumb.width, 0, 0, thumb.width, thumb.height) }
+        var worst = 0
+        for (i in a.indices) for (c in intArrayOf(16, 8, 0)) worst = maxOf(worst, kotlin.math.abs((a[i] shr c and 0xff) - (b[i] shr c and 0xff)))
+        assertTrue("largest channel difference $worst", worst <= 2)
+        assertTrue("thumbnail is corrected", meanRed(thumb) > meanRed(frame) + 10)
     }
 }

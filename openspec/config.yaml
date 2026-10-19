@@ -79,7 +79,11 @@ context: |
   Planned changes, in order (one capability per area):
   1 add-import-export (import-export), 2 add-auto-correction (auto-correction),
   3 add-preview-compare (preview-compare), 4 add-manual-adjustment (manual-adjustment),
-  5 add-video-processing (video-processing), 6 add-trial-and-purchase (licensing).
+  5 add-video-processing (video-processing), 6 add-help-and-legal (help-and-legal: gesture
+  hints, tutorial, documentation, licence, terms of service, agreements),
+  7 add-trial-and-purchase (licensing). The working-set limit of 20 (was 50) comes with change 5.
+  After the Android release: an iPhone (iOS) app with the same features and privacy
+  constraints; to be planned as its own project once Android has shipped.
 
   Out of scope for v1: RAW photos, cloud sync, social features, on-device ML models,
   lens/fisheye correction.

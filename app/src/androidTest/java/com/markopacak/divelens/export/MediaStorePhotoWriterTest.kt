@@ -5,7 +5,7 @@ import android.net.Uri
 import android.provider.MediaStore
 import androidx.exifinterface.media.ExifInterface
 import com.markopacak.divelens.TestMedia
-import com.markopacak.divelens.importer.PhotoImporter
+import com.markopacak.divelens.importer.MediaImporter
 import com.markopacak.divelens.media.FailureReason
 import com.markopacak.divelens.media.MediaItem
 import kotlinx.coroutines.CompletableDeferred
@@ -31,7 +31,7 @@ class MediaStorePhotoWriterTest {
     private fun writer(beforePublish: suspend () -> Unit = {}) =
         MediaStorePhotoWriter(resolver, cacheDir, IdentityPhotoProcessor, TestMedia.TEST_ALBUM, beforePublish)
 
-    private suspend fun photo(uri: Uri): MediaItem.Photo = PhotoImporter(resolver).import(listOf(uri)).accepted.single()
+    private suspend fun photo(uri: Uri): MediaItem.Photo = MediaImporter(resolver).import(listOf(uri)).accepted.single() as MediaItem.Photo
 
     private fun exif(uri: Uri) = resolver.openInputStream(uri)!!.use { ExifInterface(it) }
 

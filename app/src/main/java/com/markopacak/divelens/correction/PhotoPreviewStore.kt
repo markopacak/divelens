@@ -2,6 +2,7 @@ package com.markopacak.divelens.correction
 
 import com.markopacak.divelens.analysis.Correction
 import com.markopacak.divelens.analysis.CorrectionParams
+import com.markopacak.divelens.analysis.CorrectionTimeline
 import com.markopacak.divelens.analysis.V1Model
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -48,6 +49,17 @@ interface PhotoPreparer<T> {
     suspend fun estimate(source: String): Correction
 }
 
+/**
+ * Reads timeline samples of a video (add-video-processing D1): for each target time, the sync frame nearest to it and the
+ * model's parameters estimated on it. Returns (actual frame time, parameters) per frame it could read.
+ */
+fun interface TimelineSampler {
+    suspend fun sample(source: String, targetTimesUs: List<Long>): List<Pair<Long, CorrectionParams>>
+}
+
+/** An item of the working set as the store sees it; [videoDurationUs] is set for videos. */
+data class StoreItem(val source: String, val videoDurationUs: Long? = null)
+
 /** The preview state of one photo. */
 sealed interface PreviewEntry<out T> {
     data object Pending : PreviewEntry<Nothing>
@@ -64,12 +76,19 @@ sealed interface PreviewEntry<out T> {
  *
  * Each photo also has a strength (add-strength-slider D2), [defaultStrength] unless set: [correction] returns the
  * correction at that strength, and a changed strength re-renders the thumbnail before new photos are prepared.
+ *
+ * Videos are prepared like photos (their thumbnail frame) and also get a [CorrectionTimeline], analysed by the same
+ * worker in chunks of [SAMPLES_PER_JOB] samples (add-video-processing D6), in this order: correction requests,
+ * thumbnail re-renders, the video being exported ([completeTimeline]), the video being viewed from its playback
+ * position ([viewVideo]), preparing items, then the other videos in selection order.
  */
 class PhotoPreviewStore<T>(
     private val preparer: PhotoPreparer<T>,
     scope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
     val defaultStrength: Float = V1Model.DEFAULT_STRENGTH,
+    /** Analyses videos over time; without it videos get a thumbnail but no timeline. */
+    private val sampler: TimelineSampler? = null,
 ) {
     private val _entries = MutableStateFlow<Map<String, PreviewEntry<T>>>(emptyMap())
     val entries: StateFlow<Map<String, PreviewEntry<T>>> = _entries.asStateFlow()
@@ -89,14 +108,30 @@ class PhotoPreviewStore<T>(
     /** The strength each Ready thumbnail is shown at. Guarded by mutex. */
     private val shownStrength = HashMap<String, Float>()
     private var running: Pair<String, Job>? = null // guarded by mutex
+
+    /** Per video in the working set. Guarded by mutex. */
+    private class VideoState(durationUs: Long) {
+        val planned = CorrectionTimeline.plannedSampleTimes(durationUs)
+        val done = HashSet<Long>()
+        val timeline = MutableStateFlow(CorrectionTimeline(durationUs))
+        val waiters = mutableListOf<CompletableDeferred<CorrectionTimeline>>()
+        var anchorUs = 0L
+        val complete get() = done.size == planned.size
+    }
+    private val videos = HashMap<String, VideoState>()
+    private var viewed: String? = null // guarded by mutex
     private val wake = Channel<Unit>(Channel.CONFLATED)
 
     init {
         scope.launch { work() }
     }
 
-    /** Follows the working set: new photos are queued in this order, removed ones are cancelled and freed. */
-    suspend fun setPhotos(sources: List<String>) {
+    /** Follows the working set of photos only; see [setItems]. */
+    suspend fun setPhotos(sources: List<String>) = setItems(sources.map { StoreItem(it) })
+
+    /** Follows the working set: new items are queued in this order, removed ones are cancelled and freed. */
+    suspend fun setItems(items: List<StoreItem>) {
+        val sources = items.map { it.source }
         mutex.withLock {
             val keep = sources.toSet()
             val removed = order.filterNot { it in keep }
@@ -107,10 +142,50 @@ class PhotoPreviewStore<T>(
                 renderers.remove(source)
                 shownStrength.remove(source)
                 requests.remove(source)?.forEach { it.completeExceptionally(CancellationException("photo removed")) }
+                videos.remove(source)?.waiters?.forEach { it.completeExceptionally(CancellationException("video removed")) }
+            }
+            if (viewed !in keep) viewed = null
+            if (sampler != null) {
+                for (item in items) {
+                    val d = item.videoDurationUs ?: continue
+                    if (item.source !in videos) videos[item.source] = VideoState(d)
+                }
             }
             _entries.update { old -> sources.associateWith { old[it] ?: PreviewEntry.Pending } }
             _strengths.update { old -> old.filterKeys { it in keep } }
             running?.let { (source, job) -> if (source in removed) job.cancel() }
+        }
+        wake.trySend(Unit)
+    }
+
+    /** The video's correction over time as analysed so far, or null for a photo or a video without analysis. */
+    fun timeline(source: String): StateFlow<CorrectionTimeline>? = videos[source]?.timeline
+
+    /**
+     * The video's whole timeline, analysed ahead of other videos and item preparation; waits for the last sample.
+     * Throws if the video leaves the working set, or if no frame of it could be read.
+     */
+    suspend fun completeTimeline(source: String): CorrectionTimeline {
+        val waiter = mutex.withLock {
+            val v = videos[source] ?: throw IllegalStateException("no timeline for $source")
+            if (v.complete) return finished(source, v)
+            CompletableDeferred<CorrectionTimeline>().also { v.waiters += it }
+        }
+        wake.trySend(Unit)
+        return waiter.await()
+    }
+
+    private fun finished(source: String, v: VideoState): CorrectionTimeline {
+        val t = v.timeline.value
+        if (t.sampleCount == 0) throw IllegalStateException("no readable frame in $source")
+        return t
+    }
+
+    /** The viewer shows [source] at [positionUs] (or nothing, for null): its timeline is analysed from there first. */
+    suspend fun viewVideo(source: String?, positionUs: Long = 0) {
+        mutex.withLock {
+            viewed = source?.takeIf { it in videos }
+            viewed?.let { videos.getValue(it).anchorUs = positionUs }
         }
         wake.trySend(Unit)
     }
@@ -160,44 +235,66 @@ class PhotoPreviewStore<T>(
                 wake.receive()
                 continue
             }
-            val (source, job) = next
+            val (source, job, targets) = next
             val outcome = runCatching { job.await() }
             mutex.withLock {
                 running = null
-                finish(source, outcome)
+                finish(source, outcome, targets)
             }
         }
     }
 
     /**
-     * Starts the next job: requests first, then thumbnails whose strength changed, then prioritized photos not yet
-     * prepared, then the first pending photo in selection order.
+     * Starts the next job: requests first, then thumbnails whose strength changed, then the exported video's timeline,
+     * the viewed video's timeline, prioritized photos not yet prepared, the first pending item in selection order, and
+     * the other videos' timelines in selection order.
      */
-    private suspend fun nextJob(): Pair<String, Deferred<Result<T>>>? {
+    private suspend fun nextJob(): Triple<String, Deferred<Result<T>>, List<Long>?>? {
         val entries = _entries.value
         val request = requests.keys.firstOrNull()
         val render = if (request == null) (priority + order).firstOrNull { needsRender(it) } else null
-        val source = request ?: render ?: (priority + order).firstOrNull { entries[it] == PreviewEntry.Pending } ?: return null
+        val timeline = if (request == null && render == null) {
+            order.firstOrNull { videos[it]?.let { v -> v.waiters.isNotEmpty() && !v.complete } == true }
+                ?: viewed?.takeIf { !videos.getValue(it).complete }
+        } else null
+        val prepare = if (request == null && render == null && timeline == null) (priority + order).firstOrNull { entries[it] == PreviewEntry.Pending } else null
+        val background = if (request == null && render == null && timeline == null && prepare == null) {
+            order.firstOrNull { videos[it]?.complete == false }
+        } else null
+        val source = request ?: render ?: timeline ?: prepare ?: background ?: return null
         val renderer = render?.let { renderers.getValue(it) }
         val strength = strengthOf(source)
         val estimateOnly = request != null && entries[source] is PreviewEntry.Ready
+        val targets = (timeline ?: background)?.let { nextTargets(videos.getValue(it)) }
         // A supervisor child: a failed or cancelled photo must not cancel the worker.
         val context = currentCoroutineContext()
         val job = CoroutineScope(context + SupervisorJob(context[Job]) + dispatcher).async {
             when {
                 renderer != null -> Result.Rendered(runCatching { renderer.render(strength) }.getOrNull(), strength)
+                targets != null -> Result.Sampled(sampler!!.sample(source, targets))
                 estimateOnly -> Result.Estimated(preparer.estimate(source))
                 else -> Result.Prepared(preparer.prepare(source))
             }
         }
         running = source to job
-        return source to job
+        return Triple(source, job, targets)
+    }
+
+    /**
+     * The next samples to analyse: undone planned times from the anchor onwards, then, once those are done, from the start.
+     * A video's first job takes one sample only, so playback has its correction after one sample's time.
+     */
+    private fun nextTargets(v: VideoState): List<Long> {
+        val undone = v.planned.filter { it !in v.done }
+        val (after, before) = undone.partition { it >= v.anchorUs }
+        return (after.ifEmpty { before }).take(if (v.done.isEmpty()) 1 else SAMPLES_PER_JOB)
     }
 
     private fun needsRender(source: String) =
         source in renderers && shownStrength[source].let { it != null && it != strengthOf(source) }
 
-    private fun finish(source: String, outcome: kotlin.Result<Result<T>>) {
+    private fun finish(source: String, outcome: kotlin.Result<Result<T>>, targets: List<Long>?) {
+        if (targets != null) return finishSamples(source, outcome, targets)
         val result = outcome.getOrNull()
         if (result is Result.Rendered) {
             // Requests that arrived meanwhile stay queued. A failed render keeps the shown thumbnail until the strength changes again.
@@ -237,7 +334,25 @@ class PhotoPreviewStore<T>(
         )
     }
 
+    private fun finishSamples(source: String, outcome: kotlin.Result<Result<T>>, targets: List<Long>) {
+        val v = videos[source] ?: return
+        // A failed chunk counts its targets as done without samples, so one unreadable stretch does not stall the video.
+        v.done += targets
+        (outcome.getOrNull() as? Result.Sampled)?.samples?.let { samples ->
+            var t = v.timeline.value
+            for ((time, params) in samples) t = t.withSample(time, params)
+            v.timeline.value = t
+        }
+        if (v.complete) {
+            v.timeline.value = v.timeline.value.completed()
+            val result = runCatching { finished(source, v) }
+            v.waiters.forEach { w -> result.fold(w::complete, w::completeExceptionally) }
+            v.waiters.clear()
+        }
+    }
+
     private sealed interface Result<out T> {
+        class Sampled(val samples: List<Pair<Long, CorrectionParams>>) : Result<Nothing>
         class Prepared<T>(val prepared: com.markopacak.divelens.correction.Prepared<T>) : Result<T>
         class Estimated(val correction: Correction) : Result<Nothing>
         class Rendered<T>(val thumbnail: T?, val strength: Float) : Result<T>
@@ -249,10 +364,14 @@ class PhotoPreviewStore<T>(
             is Result.Prepared -> prepared.correction
             is Result.Estimated -> correction
             is Result.Rendered -> error("a render has no correction")
+            is Result.Sampled -> error("samples have no correction")
         }
 
     companion object {
         /** The viewer's photo and its two neighbours, or the photo being exported. */
         const val CORRECTIONS_KEPT = 3
+
+        /** Timeline samples per worker job, so photo work interleaves (design D6). */
+        const val SAMPLES_PER_JOB = 10
     }
 }

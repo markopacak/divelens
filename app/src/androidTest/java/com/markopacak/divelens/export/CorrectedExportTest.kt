@@ -6,7 +6,8 @@ import android.net.Uri
 import com.markopacak.divelens.TestMedia
 import com.markopacak.divelens.correction.CorrectionEstimator
 import com.markopacak.divelens.correction.CorrectionPhotoProcessor
-import com.markopacak.divelens.importer.PhotoImporter
+import com.markopacak.divelens.importer.MediaImporter
+import com.markopacak.divelens.media.MediaItem
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -26,7 +27,7 @@ class CorrectedExportTest {
         MediaStorePhotoWriter(resolver, TestMedia.context.cacheDir, processor, TestMedia.TEST_ALBUM)
 
     private suspend fun export(source: Uri, processor: PhotoProcessor = this.processor): Uri =
-        Uri.parse(writer(processor).write(PhotoImporter(resolver).import(listOf(source)).accepted.single()))
+        Uri.parse(writer(processor).write(MediaImporter(resolver).import(listOf(source)).accepted.single() as MediaItem.Photo))
 
     private fun decode(uri: Uri): Bitmap = resolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it)!! }
 

@@ -7,8 +7,6 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
-import android.system.ErrnoException
-import android.system.OsConstants
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import com.markopacak.divelens.Branding
@@ -122,12 +120,6 @@ class MediaStorePhotoWriter(
             it.getAttribute(ExifInterface.TAG_SUBSEC_TIME_ORIGINAL),
         )
     }
-
-    private fun IOException.isOutOfSpace(): Boolean =
-        generateSequence<Throwable>(this) { it.cause }.any {
-            (it is ErrnoException && it.errno == OsConstants.ENOSPC) || it.message?.contains("ENOSPC") == true ||
-                it.message?.contains("No space left", ignoreCase = true) == true
-        }
 
     companion object {
         const val JPEG_QUALITY = 95

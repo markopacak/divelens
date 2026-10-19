@@ -3,16 +3,18 @@ package com.markopacak.divelens.correction
 import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.media.MediaMetadataRetriever
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import com.markopacak.divelens.analysis.Correction
 import com.markopacak.divelens.analysis.ShiftEncoding
+import java.io.IOException
 import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * Prepares a photo for [PhotoPreviewStore] (design D2, D3): reduced decode, its correction, and a corrected
- * thumbnail on the CPU, rotated for display. It also keeps the uncorrected thumbnail and its encoded shift, so
+ * Prepares a photo or video for [PhotoPreviewStore] (design D2, D3): reduced decode (for a video, one frame), its
+ * correction, and a corrected thumbnail on the CPU, rotated for display. It also keeps the uncorrected thumbnail and its encoded shift, so
  * the thumbnail can be shown at another strength in milliseconds (add-strength-slider D3).
  */
 class AndroidPhotoPreparer(
@@ -21,25 +23,75 @@ class AndroidPhotoPreparer(
 ) : PhotoPreparer<Bitmap> {
 
     override suspend fun prepare(source: String): Prepared<Bitmap> {
+        if (isVideo(source)) return prepareVideo(source)
         val uri = source.toUri()
         val decoded = estimator.decode(uri)
         try {
             val correction = estimator.estimate(decoded)
-            val rotation = rotation(source)
-            val thumbnail = downscale(decoded.bitmap, THUMBNAIL_SIZE)
-            val w = thumbnail.width; val h = thumbnail.height
-            val px = IntArray(w * h).also { thumbnail.getPixels(it, 0, w, 0, 0, w, h) }
-            val at = correction.at(w, h)
-            val shifts = Bitmap.createBitmap(ShiftEncoding.encodeShifts(px, at, w, h), w, h, Bitmap.Config.ARGB_8888)
-            val original = thumbnail.copy(Bitmap.Config.ARGB_8888, false)
-            CorrectionPhotoProcessor.applyOnCpu(thumbnail, at)
-            return Prepared(correction, rotate(thumbnail, rotation), rotation, ShiftRenderer(original, shifts, rotation))
+            return thumbnailOf(downscale(decoded.bitmap, THUMBNAIL_SIZE), correction, rotation(source))
         } finally {
             decoded.bitmap.recycle()
         }
     }
 
-    override suspend fun estimate(source: String): Correction = estimator.estimate(source.toUri())
+    override suspend fun estimate(source: String): Correction =
+        if (isVideo(source)) prepareVideo(source).correction else estimator.estimate(source.toUri())
+
+    /** The corrected thumbnail of a [thumbnail]-sized copy (recycled) under [correction], with its shift for re-rendering. */
+    private fun thumbnailOf(thumbnail: Bitmap, correction: Correction, rotation: Int): Prepared<Bitmap> {
+        val w = thumbnail.width; val h = thumbnail.height
+        val px = IntArray(w * h).also { thumbnail.getPixels(it, 0, w, 0, 0, w, h) }
+        val at = correction.at(w, h)
+        val shifts = Bitmap.createBitmap(ShiftEncoding.encodeShifts(px, at, w, h), w, h, Bitmap.Config.ARGB_8888)
+        val original = thumbnail.copy(Bitmap.Config.ARGB_8888, false)
+        CorrectionPhotoProcessor.applyOnCpu(thumbnail, at)
+        return Prepared(correction, rotate(thumbnail, rotation), rotation, ShiftRenderer(original, shifts, rotation))
+    }
+
+    private fun isVideo(source: String) = resolver.getType(source.toUri())?.startsWith("video/") == true
+
+    /**
+     * A video's thumbnail (add-video-processing D5): the frame [VideoThumbnailFrame] picks, already in display orientation,
+     * corrected exactly as a photo with its own estimate. The correction belongs to that frame; the video's correction
+     * over time comes from its timeline.
+     */
+    private fun prepareVideo(source: String): Prepared<Bitmap> {
+        val retriever = MediaMetadataRetriever()
+        try {
+            resolver.openFileDescriptor(source.toUri(), "r")?.use { retriever.setDataSource(it.fileDescriptor) }
+                ?: throw IOException("cannot open $source")
+            val durationUs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.times(1000)
+                ?: throw IOException("no duration in $source")
+            val (_, frame) = VideoThumbnailFrame.choose(
+                durationUs,
+                frameAt = { t -> frameAt(retriever, t) },
+                meanGrey = ::meanGrey,
+                release = Bitmap::recycle,
+            ) ?: throw IOException("no readable frame in $source")
+            val thumbnail = downscale(frame, THUMBNAIL_SIZE)
+            if (thumbnail !== frame) frame.recycle()
+            val correction = CorrectionPhotoProcessor.estimate(thumbnail, estimator.strength)
+            return thumbnailOf(thumbnail, correction, 0)
+        } finally {
+            retriever.release()
+        }
+    }
+
+    /** The frame at [timeUs] scaled to about the thumbnail size, in display orientation, as a mutable ARGB bitmap. */
+    private fun frameAt(retriever: MediaMetadataRetriever, timeUs: Long): Bitmap? = runCatching {
+        val frame = retriever.getScaledFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST, THUMBNAIL_SIZE * 2, THUMBNAIL_SIZE * 2)
+            ?: return null
+        if (frame.config == Bitmap.Config.ARGB_8888 && frame.isMutable) frame
+        else frame.copy(Bitmap.Config.ARGB_8888, true).also { frame.recycle() }
+    }.getOrNull()
+
+    private fun meanGrey(bitmap: Bitmap): Double {
+        val w = bitmap.width; val h = bitmap.height
+        val px = IntArray(w * h).also { bitmap.getPixels(it, 0, w, 0, 0, w, h) }
+        var sum = 0L
+        for (p in px) sum += (p shr 16 and 0xff) + (p shr 8 and 0xff) + (p and 0xff)
+        return sum / (3.0 * 255 * px.size)
+    }
 
     private fun rotation(source: String): Int = runCatching {
         resolver.openInputStream(source.toUri())?.use { ExifInterface(it).rotationDegrees }

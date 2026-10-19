@@ -1,7 +1,9 @@
 package com.markopacak.divelens.export
 
 import com.markopacak.divelens.Branding
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 object ExportNaming {
@@ -20,5 +22,19 @@ object ExportNaming {
     ): String {
         val taken = runCatching { LocalDateTime.parse(dateTimeOriginal?.trim(), exifFormat) }.getOrNull()
         return "${prefix}_${(taken ?: now()).format(nameFormat)}.jpg"
+    }
+
+    /**
+     * `DiveLens_20261004_173234.mp4` from a video's creation time (UTC in the file), in [zone]; [now] when the file
+     * has none (add-video-processing, import-export "Exported file location and naming").
+     */
+    fun videoFileName(
+        creationTimeMillis: Long?,
+        zone: ZoneId = ZoneId.systemDefault(),
+        now: () -> LocalDateTime = LocalDateTime::now,
+        prefix: String = Branding.EXPORT_PREFIX,
+    ): String {
+        val created = creationTimeMillis?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone) }
+        return "${prefix}_${(created ?: now()).format(nameFormat)}.mp4"
     }
 }

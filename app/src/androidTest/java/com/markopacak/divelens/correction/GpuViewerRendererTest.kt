@@ -11,7 +11,8 @@ import com.markopacak.divelens.analysis.Correction
 import com.markopacak.divelens.analysis.CpuCorrection
 import com.markopacak.divelens.export.MediaStorePhotoWriter
 import com.markopacak.divelens.export.PhotoProcessor
-import com.markopacak.divelens.importer.PhotoImporter
+import com.markopacak.divelens.importer.MediaImporter
+import com.markopacak.divelens.media.MediaItem
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -57,7 +58,7 @@ class GpuViewerRendererTest {
         val processor = if (strength == null) CorrectionPhotoProcessor(corrections) else CorrectionPhotoProcessor(corrections, { strength })
         val capture = PhotoProcessor { s, input -> processor.process(s, input).also { exported = it.copy(Bitmap.Config.ARGB_8888, false) } }
         MediaStorePhotoWriter(resolver, TestMedia.context.cacheDir, capture, TestMedia.TEST_ALBUM)
-            .write(PhotoImporter(resolver).import(listOf(source)).accepted.single())
+            .write(MediaImporter(resolver).import(listOf(source)).accepted.single() as MediaItem.Photo)
         val export = exported!!
         val exportShown = Bitmap.createBitmap(export, 0, 0, export.width, export.height, Matrix().apply { postRotate(90f) }, false)
 

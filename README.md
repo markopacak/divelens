@@ -1,12 +1,12 @@
 # DiveLens
 
-Android app that fixes underwater photos (blue-green cast, missing red, flat contrast) on the device. Photos and videos never leave your device.
+Android app that fixes underwater photos and videos (blue-green cast, missing red, flat contrast) on the device. Photos and videos never leave your device.
 
 "DiveLens" is a working name.
 
 ## Status
 
-Early development. Today the app imports photos through the system photo picker and exports colour-corrected, full-resolution copies to the gallery (Pictures/DiveLens), keeping date, camera and orientation metadata. The correction is automatic: it rebuilds red from green and blue and stretches green and blue contrast, with parameters estimated per photo, and runs on the GPU (with a CPU fallback). The grid shows corrected thumbnails; a full-screen viewer zooms to real pixels, shows the original while you press and hold, and has a strength slider per photo (with "Apply to all") that the thumbnails and the export follow. Further sliders and video come later.
+Early development. Today the app imports photos and videos through the system photo picker (up to 20 items per batch) and exports colour-corrected copies to the gallery (Pictures/DiveLens): photos at full resolution with their date, camera and orientation metadata, videos as MP4 at their original resolution, frame rate and orientation, with the audio unchanged and the creation date kept. Exports never contain location. The correction is automatic: it rebuilds red from green and blue and stretches green and blue contrast, with parameters estimated per photo, and runs on the GPU (with a CPU fallback for photos). For videos the parameters are sampled every second and smoothed over time, so the colour follows depth without flicker. The grid shows corrected thumbnails with the date taken and, for videos, the duration. A full-screen viewer zooms photos to real pixels, plays videos with the correction applied live, shows the original while you press and hold, and has a strength slider per item (with "Apply to all") that the thumbnails, playback and export follow. The export runs in the background with a progress notification. Further sliders come later.
 
 Planned work is tracked as [OpenSpec](https://github.com/Fission-AI/OpenSpec) changes in `openspec/changes/`.
 

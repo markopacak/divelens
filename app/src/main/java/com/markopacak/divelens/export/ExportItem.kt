@@ -1,10 +1,19 @@
 package com.markopacak.divelens.export
 
+import android.system.ErrnoException
+import android.system.OsConstants
 import com.markopacak.divelens.media.FailureReason
 import com.markopacak.divelens.media.MediaItem
 import kotlin.coroutines.cancellation.CancellationException
 
-/** Thrown by a [PhotoWriter] with the user-facing reason for the failure. */
+/** True when this failure, or one of its causes, is the storage running full. */
+internal fun Throwable.isOutOfSpace(): Boolean =
+    generateSequence(this) { it.cause }.any {
+        (it is ErrnoException && it.errno == OsConstants.ENOSPC) || it.message?.contains("ENOSPC") == true ||
+            it.message?.contains("No space left", ignoreCase = true) == true
+    }
+
+/** Thrown by a [PhotoWriter] or [VideoWriter] with the user-facing reason for the failure. */
 class ExportException(val reason: FailureReason, cause: Throwable? = null) : Exception(reason.name, cause)
 
 /** Writes one photo to the gallery and returns the new item's URI string. */
@@ -18,15 +27,21 @@ sealed interface ItemResult {
     data class Failed(val reason: FailureReason) : ItemResult
 }
 
-/** Exports one item: asks the gate, writes, then reports success to the gate. */
-class ExportItemUseCase(private val gate: ExportGate, private val writer: PhotoWriter) {
+/** Exports one item: asks the gate, writes it with the writer for its kind, then reports success to the gate. */
+class ExportItemUseCase(
+    private val gate: ExportGate,
+    private val writer: PhotoWriter,
+    private val videoWriter: VideoWriter? = null,
+) {
 
     suspend operator fun invoke(item: MediaItem): ItemResult {
         val decision = gate.check(item)
         if (decision is GateDecision.Refused) return ItemResult.Refused(decision.message)
-        val photo = item as? MediaItem.Photo ?: return ItemResult.Failed(FailureReason.UnreadableSource)
         val uri = try {
-            writer.write(photo)
+            when (item) {
+                is MediaItem.Photo -> writer.write(item)
+                is MediaItem.Video -> videoWriter?.write(item) ?: return ItemResult.Failed(FailureReason.UnreadableSource)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: ExportException) {

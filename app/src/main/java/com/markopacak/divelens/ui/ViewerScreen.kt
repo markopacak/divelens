@@ -24,9 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,6 +48,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -67,6 +67,8 @@ import com.markopacak.divelens.R
 import com.markopacak.divelens.correction.Layer
 import com.markopacak.divelens.correction.ViewerPhoto
 import com.markopacak.divelens.correction.ViewerRenderer
+import com.markopacak.divelens.analysis.V1Model
+import com.markopacak.divelens.media.MediaItem
 import com.markopacak.divelens.media.WorkingItem
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -109,9 +111,10 @@ private const val MESSAGE_MILLIS = 3000L
 private val AUTO_LABEL_WIDTH = 48.dp
 
 /**
- * Full-screen viewer over the working set (spec "Full-screen viewer", design D4): swipe between photos,
- * zoom up to 100% with corrected tiles, press and hold to see the original. Back closes it. With [strengths],
- * a panel adjusts the strength of the photo shown (add-strength-slider D4).
+ * Full-screen viewer over the working set (spec "Full-screen viewer", design D4): swipe between photos and videos,
+ * zoom photos up to 100% with corrected tiles, press and hold to see the original. Back closes it. With [strengths],
+ * a panel adjusts the strength of the item shown (add-strength-slider D4). With [videos], videos play corrected
+ * ([VideoPage]).
  */
 @Composable
 fun ViewerScreen(
@@ -121,12 +124,15 @@ fun ViewerScreen(
     onPageChanged: (Int) -> Unit,
     onClose: () -> Unit,
     strengths: StrengthControls? = null,
+    videos: VideoSupport? = null,
 ) {
     BackHandler(onBack = onClose)
     val pager = rememberPagerState(initialPage = initialIndex.coerceIn(0, max(0, items.size - 1))) { items.size }
     val pageChanged by rememberUpdatedState(onPageChanged)
     LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { pageChanged(it) } }
     var dragging by remember { mutableStateOf(false) }
+    var panelHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(
             state = pager,
@@ -134,8 +140,15 @@ fun ViewerScreen(
             beyondViewportPageCount = 1,
             modifier = Modifier.fillMaxSize().testTag("viewer"),
         ) { page ->
-            val source = items[page].item.source
-            ViewerPage(items[page], renderer, strengths?.of(source), dragging && page == pager.currentPage)
+            val item = items[page]
+            val source = item.item.source
+            val video = item.item as? MediaItem.Video
+            if (video != null && videos != null) {
+                // Only the settled current page plays, so at most one decoder runs (add-video-processing D10).
+                VideoPage(video, active = page == pager.settledPage, videos, strengths?.of(source) ?: V1Model.DEFAULT_STRENGTH, bottomInset = panelHeight)
+            } else {
+                ViewerPage(item, renderer, strengths?.of(source), dragging && page == pager.currentPage)
+            }
         }
         // A sibling of the pager: its touches reach neither hold to compare nor zoom and swipe.
         if (strengths != null && items.isNotEmpty()) {
@@ -147,15 +160,16 @@ fun ViewerScreen(
                 onChange = { strengths.onChange(source, it) },
                 onDragging = { dragging = it },
                 onApplyToAll = strengths.onApplyToAll,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { panelHeight = with(density) { it.height.toDp() } },
             )
         }
     }
 }
 
 /**
- * The adjustment panel (add-strength-slider D4): closed, an "Adjust" button; open, the strength slider from 0 to
- * 100% with the default marked "Auto", Reset and Apply to all. Its open state is kept across swipes.
+ * The adjustment panel (add-strength-slider D4), always shown at the bottom: the strength slider from 0 to 100% with
+ * the default marked "Auto", Reset and Apply to all. On videos the playback bar sits above it; its white slider and
+ * the times tell it apart from this one.
  */
 @Composable
 private fun AdjustmentPanel(
@@ -167,22 +181,18 @@ private fun AdjustmentPanel(
     onApplyToAll: (Float) -> Unit,
     modifier: Modifier,
 ) {
-    var open by remember { mutableStateOf(false) }
-    var applied by remember { mutableStateOf<Pair<Int, Int>?>(null) } // percent, photos
+    var applied by remember { mutableStateOf<Pair<Int, Int>?>(null) } // percent, items
     LaunchedEffect(applied) { if (applied != null) { delay(MESSAGE_MILLIS); applied = null } }
     val percent = (strength * 100).roundToInt()
-    if (!open) {
-        Box(modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)) {
-            FilledTonalButton(onClick = { open = true }, modifier = Modifier.align(Alignment.BottomEnd).testTag("adjust")) {
-                Text(stringResource(R.string.adjust))
-            }
-        }
-        return
-    }
-    Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), modifier = modifier.fillMaxWidth().testTag("adjustment_panel")) {
+    // The colour is set explicitly: a translucent surface has no matching content colour, so the text fell back to black.
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier.fillMaxWidth().testTag("adjustment_panel"),
+    ) {
         Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.strength), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.correction_strength), style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.weight(1f))
                 Text(stringResource(R.string.percent, percent), style = MaterialTheme.typography.titleSmall, modifier = Modifier.testTag("strength_value"))
             }
@@ -190,7 +200,7 @@ private fun AdjustmentPanel(
                 // The default's position: the 4 dp thumb's track runs from 2 dp to the width minus 2 dp.
                 val mark = 2.dp + (maxWidth - 4.dp) * default
                 Column {
-                    Slider(
+                    ThinSlider(
                         value = strength,
                         onValueChange = { onDragging(true); onChange(it) },
                         onValueChangeFinished = { onDragging(false) },
@@ -212,8 +222,6 @@ private fun AdjustmentPanel(
                 TextButton(onClick = { onApplyToAll(strength); applied = percent to photoCount }) {
                     Text(stringResource(R.string.apply_to_all))
                 }
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = { open = false }) { Text(stringResource(R.string.done)) }
             }
             applied?.let { (p, n) ->
                 Text(

@@ -176,9 +176,9 @@ class ViewerScreenTest {
 
     private fun zoomOf(): Float = rule.onAllNodes(SemanticsMatcher.keyIsDefined(ViewerZoom))[0].fetchSemanticsNode().config[ViewerZoom] // first page; its neighbour is composed too
 
+    /** The panel is always shown (no Adjust button since the device check of add-video-processing). */
     private fun openPanel() {
-        rule.onNodeWithTag("adjust").performClick()
-        rule.waitForIdle()
+        rule.onNodeWithTag("adjustment_panel").assertIsDisplayed()
     }
 
     private fun setSlider(value: Float) {
@@ -233,7 +233,7 @@ class ViewerScreenTest {
         rule.onNodeWithText("Apply to all").performClick()
         rule.waitForIdle()
         assertEquals(photos.associate { it.source to 0.6f }, strengths)
-        rule.onNodeWithTag("applied_message").assertTextEquals("Strength 60% applied to 5 photos")
+        rule.onNodeWithTag("applied_message").assertTextEquals("Strength 60% applied to 5 items")
     }
 
     @Test fun holdComparesWhileThePanelIsOpen() {

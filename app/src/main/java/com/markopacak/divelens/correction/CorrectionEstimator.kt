@@ -19,7 +19,7 @@ class ReducedDecode(val bitmap: Bitmap, val sampleSize: Int, val fullWidth: Int,
  */
 class CorrectionEstimator(
     private val resolver: ContentResolver,
-    private val strength: Float = V1Model.DEFAULT_STRENGTH,
+    val strength: Float = V1Model.DEFAULT_STRENGTH,
 ) {
 
     /** Decodes [source] at the estimate's sample size. Throws [IOException] if it cannot be read or decoded. */

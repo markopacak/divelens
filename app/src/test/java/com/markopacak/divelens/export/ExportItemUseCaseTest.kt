@@ -35,4 +35,24 @@ class ExportItemUseCaseTest {
         assertEquals(ItemResult.Failed(FailureReason.InsufficientStorage), result)
         assertEquals(listOf("check", "write"), calls)
     }
+
+    private val video = MediaItem.Video("content://v/1", "VID_1.mp4", "video/mp4", 1920, 1080, durationUs = 1_000_000, frameRate = 30f, codec = "video/avc")
+
+    @Test fun videosGoToTheVideoWriter() = runTest {
+        val videoWriter = VideoWriter { calls += "writeVideo ${it.source}"; "content://out/v1" }
+        val result = ExportItemUseCase(gate(GateDecision.Allowed), okWriter, videoWriter)(video)
+        assertEquals(ItemResult.Exported("content://out/v1"), result)
+        assertEquals(listOf("check", "writeVideo content://v/1", "onExported"), calls)
+    }
+
+    @Test fun aFailedVideoIsNotReportedToGate() = runTest {
+        val videoWriter = VideoWriter { calls += "writeVideo"; throw ExportException(FailureReason.InsufficientStorage) }
+        val result = ExportItemUseCase(gate(GateDecision.Allowed), okWriter, videoWriter)(video)
+        assertEquals(ItemResult.Failed(FailureReason.InsufficientStorage), result)
+        assertEquals(listOf("check", "writeVideo"), calls)
+    }
+
+    @Test fun videosFailWithoutAVideoWriter() = runTest {
+        assertEquals(ItemResult.Failed(FailureReason.UnreadableSource), ExportItemUseCase(gate(GateDecision.Allowed), okWriter)(video))
+    }
 }

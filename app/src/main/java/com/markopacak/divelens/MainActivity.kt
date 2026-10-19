@@ -1,5 +1,7 @@
 package com.markopacak.divelens
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.ext.SdkExtensions
@@ -12,34 +14,24 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.markopacak.divelens.batch.BatchExporter
-import com.markopacak.divelens.correction.AndroidPhotoPreparer
-import com.markopacak.divelens.correction.CorrectionPhotoProcessor
-import com.markopacak.divelens.correction.GpuViewerRenderer
-import com.markopacak.divelens.correction.PhotoPreviewStore
-import com.markopacak.divelens.export.AlwaysAllowExportGate
-import com.markopacak.divelens.export.ExportItemUseCase
-import com.markopacak.divelens.export.MediaStorePhotoWriter
-import com.markopacak.divelens.importer.PhotoImporter
 import com.markopacak.divelens.ui.ImportExportScreen
 import com.markopacak.divelens.ui.ImportExportViewModel
 import com.markopacak.divelens.ui.StrengthControls
 import com.markopacak.divelens.ui.theme.DiveLensTheme
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             DiveLensTheme {
-                val vm: ImportExportViewModel = viewModel(factory = viewModelFactory { initializer { createViewModel() } })
+                val vm: ImportExportViewModel = viewModel(factory = viewModelFactory { initializer { ImportExportViewModel((application as DiveLensApp).graph.session) } })
                 val state by vm.state.collectAsStateWithLifecycle()
                 val previews by vm.previews.collectAsStateWithLifecycle()
                 val strengths by vm.strengths.collectAsStateWithLifecycle()
@@ -47,13 +39,15 @@ class MainActivity : ComponentActivity() {
                 val room = state.workingSet.room
                 val contract = remember(room) { ActivityResultContracts.PickMultipleVisualMedia(pickerMaxItems(room)) }
                 val picker = rememberLauncherForActivityResult(contract) { vm.onPicked(it) }
+                // The notification permission is asked once, at the first export; the export runs whatever the answer.
+                val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.export() }
                 ImportExportScreen(
                     state = state,
                     previews = previews,
-                    onSelectPhotos = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    onSelectPhotos = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
                     onRemove = vm::remove,
                     onClear = vm::clear,
-                    onExport = vm::export,
+                    onExport = { if (askForNotifications()) notifications.launch(Manifest.permission.POST_NOTIFICATIONS) else vm.export() },
                     onCancel = vm::cancel,
                     onDismissSummary = vm::dismissSummary,
                     onDismissRejections = vm::dismissRejections,
@@ -62,24 +56,20 @@ class MainActivity : ComponentActivity() {
                     onCloseViewer = vm::closeViewer,
                     onViewerPage = vm::onViewerPage,
                     strengths = if (vm.adjustable) StrengthControls(strengths, vm.defaultStrength, vm::setStrength, vm::applyStrengthToAll) else null,
+                    videos = vm.videos,
                 )
             }
         }
     }
 
-    /** Manual wiring. A later change swaps the gate (licensing). */
-    private fun createViewModel(): ImportExportViewModel {
-        val resolver = applicationContext.contentResolver
-        val importer = PhotoImporter(resolver)
-        val previewScope = CoroutineScope(SupervisorJob())
-        val store = PhotoPreviewStore(AndroidPhotoPreparer(resolver), previewScope)
-        // The export applies the correction the preview shows, at the photo's strength.
-        val writer = MediaStorePhotoWriter(resolver, applicationContext.cacheDir, CorrectionPhotoProcessor(store::correction, store::strengthOf))
-        val exportItem = ExportItemUseCase(AlwaysAllowExportGate, writer)
-        val viewer = GpuViewerRenderer(resolver, store::correction)
-        return ImportExportViewModel(importer::import, BatchExporter { exportItem(it) }, store, viewer).apply {
-            addCloseable { previewScope.cancel() }
-        }
+    /** True the first time an export starts on Android 13+ without the notification permission (add-video-processing D8). */
+    private fun askForNotifications(): Boolean {
+        if (Build.VERSION.SDK_INT < 33) return false
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return false
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        if (prefs.getBoolean(ASKED_NOTIFICATIONS, false)) return false
+        prefs.edit().putBoolean(ASKED_NOTIFICATIONS, true).apply()
+        return true
     }
 
     /**
@@ -91,5 +81,10 @@ class MainActivity : ComponentActivity() {
             (Build.VERSION.SDK_INT >= 30 && SdkExtensions.getExtensionVersion(Build.VERSION_CODES.R) >= 2)
         val systemLimit = if (systemPicker) MediaStore.getPickImagesMaxLimit() else Int.MAX_VALUE
         return room.coerceAtMost(systemLimit).coerceAtLeast(2)
+    }
+
+    private companion object {
+        const val PREFS = "divelens"
+        const val ASKED_NOTIFICATIONS = "asked_notifications"
     }
 }

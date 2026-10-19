@@ -22,6 +22,7 @@ object TestMedia {
     val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     val resolver: ContentResolver get() = context.contentResolver
     private val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+    private val videoCollection = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
 
     /** A width×height gradient JPEG with date, camera, orientation 6 and fake GPS tags. */
     fun jpegWithExif(name: String, width: Int = 400, height: Int = 300, withOffset: Boolean = true): Uri {
@@ -59,6 +60,19 @@ object TestMedia {
 
     fun corruptJpeg(name: String): Uri = insert(name, "image/jpeg", ByteArray(2048) { (it * 31).toByte() })
 
+    /** The synthetic clip from `tools/reference/video_fixture.py`: 2 s, 640×360, rotation 90, location, text track. */
+    fun driftVideo(name: String = "drift.mp4"): Uri = asset(name, "video/mp4", "synthetic_drift.mp4")
+
+    /** The synthetic 10-bit HLG HEVC clip from `tools/reference/video_fixture.py`. */
+    fun hlgVideo(name: String = "hlg.mp4"): Uri = asset(name, "video/mp4", "synthetic_hlg.mp4")
+
+    /** The synthetic 20 s clip from `tools/reference/video_fixture.py`, for viewer tests that need playback to last. */
+    fun longVideo(name: String = "long.mp4"): Uri = asset(name, "video/mp4", "synthetic_long.mp4")
+
+    /** An MP4 header followed by garbage. */
+    fun corruptMp4(name: String): Uri =
+        insert(name, "video/mp4", byteArrayOf(0, 0, 0, 0x18, 'f'.code.toByte(), 't'.code.toByte(), 'y'.code.toByte(), 'p'.code.toByte()) + ByteArray(4096) { (it * 31).toByte() })
+
     fun insert(name: String, mime: String, bytes: ByteArray): Uri {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, name)
@@ -66,7 +80,7 @@ object TestMedia {
             // Each fixture gets its own folder so leftovers from an aborted run can't collide.
             put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/$TEST_ALBUM/src/${System.nanoTime()}")
         }
-        val uri = resolver.insert(collection, values)!!
+        val uri = resolver.insert(if (mime.startsWith("video/")) videoCollection else collection, values)!!
         resolver.openOutputStream(uri)!!.use { it.write(bytes) }
         return uri
     }
@@ -75,24 +89,29 @@ object TestMedia {
         MessageDigest.getInstance("SHA-256").digest(resolver.openInputStream(uri)!!.use { it.readBytes() })
             .joinToString("") { "%02x".format(it) }
 
-    /** All rows in Pictures/[TEST_ALBUM]/ (exports only, not sources), including pending ones. */
+    /** All photo rows in Pictures/[TEST_ALBUM]/ (exports only, not sources), including pending ones. */
     fun exportedRows(): List<Uri> = query("${MediaStore.Images.Media.RELATIVE_PATH} = ?", "Pictures/$TEST_ALBUM/")
 
+    /** All video rows in Pictures/[TEST_ALBUM]/ (exports only, not sources), including pending ones. */
+    fun exportedVideoRows(): List<Uri> = query("${MediaStore.Video.Media.RELATIVE_PATH} = ?", "Pictures/$TEST_ALBUM/", videoCollection)
+
     fun deleteAll() {
-        query("${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?", "Pictures/$TEST_ALBUM/%").forEach { resolver.delete(it, null, null) }
+        for (c in listOf(collection, videoCollection)) {
+            query("${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?", "Pictures/$TEST_ALBUM/%", c).forEach { resolver.delete(it, null, null) }
+        }
     }
 
-    private fun query(selection: String, arg: String): List<Uri> {
+    private fun query(selection: String, arg: String, collection: Uri = this.collection): List<Uri> {
         val cursor = if (Build.VERSION.SDK_INT >= 30) {
             val args = Bundle().apply {
                 putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
                 putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf(arg))
                 putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE)
             }
-            resolver.query(collection, arrayOf(MediaStore.Images.Media._ID), args, null)
+            resolver.query(collection, arrayOf(MediaStore.MediaColumns._ID), args, null)
         } else {
             @Suppress("DEPRECATION")
-            resolver.query(MediaStore.setIncludePending(collection), arrayOf(MediaStore.Images.Media._ID), selection, arrayOf(arg), null)
+            resolver.query(MediaStore.setIncludePending(collection), arrayOf(MediaStore.MediaColumns._ID), selection, arrayOf(arg), null)
         }
         return cursor!!.use { c ->
             buildList { while (c.moveToNext()) add(Uri.withAppendedPath(collection, c.getLong(0).toString())) }

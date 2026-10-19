@@ -67,4 +67,20 @@ class CorrectionPhotoProcessorTest {
             assert(d <= 1) { "pixel $i differs by $d" }
         }
     }
+
+    /** Spec "Export at zero strength": the pixels pass through, without a correction or the GPU. */
+    @Test
+    fun zeroStrengthReturnsTheInputUntouched() = runBlocking {
+        var lookups = 0; var gpuCalls = 0
+        val processor = CorrectionPhotoProcessor(
+            corrections = { lookups++; error("no correction expected") },
+            strengthFor = { 0f },
+            gpu = { _, _ -> gpuCalls++ },
+        )
+        val input = source()
+        val out = processor.process("test", input)
+        assertSame(input, out)
+        assertArrayEquals(pixels(source()), pixels(out))
+        org.junit.Assert.assertEquals(0 to 0, lookups to gpuCalls)
+    }
 }

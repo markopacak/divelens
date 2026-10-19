@@ -6,12 +6,14 @@ import android.graphics.Matrix
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import com.markopacak.divelens.analysis.Correction
+import com.markopacak.divelens.analysis.ShiftEncoding
 import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
  * Prepares a photo for [PhotoPreviewStore] (design D2, D3): reduced decode, its correction, and a corrected
- * thumbnail on the CPU, rotated for display.
+ * thumbnail on the CPU, rotated for display. It also keeps the uncorrected thumbnail and its encoded shift, so
+ * the thumbnail can be shown at another strength in milliseconds (add-strength-slider D3).
  */
 class AndroidPhotoPreparer(
     private val resolver: ContentResolver,
@@ -25,8 +27,13 @@ class AndroidPhotoPreparer(
             val correction = estimator.estimate(decoded)
             val rotation = rotation(source)
             val thumbnail = downscale(decoded.bitmap, THUMBNAIL_SIZE)
-            CorrectionPhotoProcessor.applyOnCpu(thumbnail, correction.at(thumbnail.width, thumbnail.height))
-            return Prepared(correction, rotate(thumbnail, rotation), rotation)
+            val w = thumbnail.width; val h = thumbnail.height
+            val px = IntArray(w * h).also { thumbnail.getPixels(it, 0, w, 0, 0, w, h) }
+            val at = correction.at(w, h)
+            val shifts = Bitmap.createBitmap(ShiftEncoding.encodeShifts(px, at, w, h), w, h, Bitmap.Config.ARGB_8888)
+            val original = thumbnail.copy(Bitmap.Config.ARGB_8888, false)
+            CorrectionPhotoProcessor.applyOnCpu(thumbnail, at)
+            return Prepared(correction, rotate(thumbnail, rotation), rotation, ShiftRenderer(original, shifts, rotation))
         } finally {
             decoded.bitmap.recycle()
         }
@@ -37,6 +44,17 @@ class AndroidPhotoPreparer(
     private fun rotation(source: String): Int = runCatching {
         resolver.openInputStream(source.toUri())?.use { ExifInterface(it).rotationDegrees }
     }.getOrNull() ?: 0
+
+    /** Renders the thumbnail at a strength from its uncorrected pixels and encoded shift, both in stored orientation. */
+    class ShiftRenderer(private val original: Bitmap, private val shifts: Bitmap, private val rotation: Int) : ThumbnailRenderer<Bitmap> {
+        override fun render(strength: Float): Bitmap {
+            val w = original.width; val h = original.height
+            val px = IntArray(w * h).also { original.getPixels(it, 0, w, 0, 0, w, h) }
+            val sh = IntArray(w * h).also { shifts.getPixels(it, 0, w, 0, 0, w, h) }
+            ShiftEncoding.render(px, sh, strength, px)
+            return rotate(Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888), rotation)
+        }
+    }
 
     companion object {
         /** Longest side of a thumbnail in pixels. */

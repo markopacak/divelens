@@ -7,6 +7,10 @@ class Correction(val params: CorrectionParams, val map: CorrectionMap, val width
      * sampled copy for display. The maps are resolution-independent, so nothing is copied.
      */
     fun at(width: Int, height: Int): Correction = Correction(params, map, width, height)
+
+    /** The same correction at another [strength]; the maps do not depend on it, so nothing is copied. */
+    fun withStrength(strength: Float): Correction =
+        if (strength == params.strength) this else Correction(params.withStrength(strength), map, width, height)
 }
 
 /**

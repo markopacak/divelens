@@ -99,7 +99,15 @@ class GpuViewerRenderer(
             val keys = (stored.top / step..(stored.bottom - 1) / step).flatMap { row ->
                 (stored.left / step..(stored.right - 1) / step).map { col -> TileCache.Key(source, sampleSize, col, row) }
             }
-            val result = keys.map { key -> tiles.get(key) ?: makeTile(decoder, key, step).also { tiles.put(key, it) } }
+            // A tile made at another strength is corrected again from its kept original (add-strength-slider D5).
+            val result = keys.map { key ->
+                val kept = tiles.get(key)
+                when {
+                    kept == null -> makeTile(decoder, key, step).also { tiles.put(key, it) }
+                    kept.strength != strength -> rerender(kept).also { tiles.put(key, it) }
+                    else -> kept
+                }
+            }
             tiles.trim(keep = keys.toSet())
             result
         }
@@ -130,7 +138,10 @@ class GpuViewerRenderer(
             val stored = if (decoded.isMutable && decoded.config == Bitmap.Config.ARGB_8888) decoded else decoded.copy(Bitmap.Config.ARGB_8888, true)
             val original = stored.copy(Bitmap.Config.ARGB_8888, false)
             correct(stored, original, originX, originY, imageWidth, imageHeight)
-            return Layer(rotate(stored), rotate(original), orientation.toDisplay(storedRect)).also { it.place = Placement(originX, originY, imageWidth, imageHeight) }
+            return Layer(rotate(stored), rotate(original), orientation.toDisplay(storedRect)).also {
+                it.place = Placement(originX, originY, imageWidth, imageHeight)
+                it.strength = strength
+            }
         }
 
         /** Corrects [bitmap] in place; [original] holds its uncorrected pixels in case the GPU fails halfway. */
@@ -157,9 +168,10 @@ class GpuViewerRenderer(
 
         override suspend fun setStrength(strength: Float) = lock.withLock {
             if (strength == this.strength) return@withLock
+            val start = SystemClock.elapsedRealtime()
             this.strength = strength
             base = base?.let { (n, layer) -> n to rerender(layer) }
-            tiles.replaceAll(source) { rerender(it) }
+            Log.i(TAG, "strength $strength: base in ${SystemClock.elapsedRealtime() - start} ms")
         }
 
         private suspend fun rerender(layer: Layer): Layer {
@@ -167,7 +179,10 @@ class GpuViewerRenderer(
             val original = rotate(layer.original, back = true)
             val stored = original.copy(Bitmap.Config.ARGB_8888, true)
             correct(stored, original, place.originX, place.originY, place.imageWidth, place.imageHeight)
-            return Layer(rotate(stored), layer.original, layer.rect).also { it.place = place }
+            return Layer(rotate(stored), layer.original, layer.rect).also {
+                it.place = place
+                it.strength = strength
+            }
         }
 
         private fun regionDecoder(): BitmapRegionDecoder? {
@@ -251,11 +266,6 @@ class TileCache(private val budgetBytes: Int) {
             val e = it.next()
             if (e.key.source == source) { bytes -= e.value.bytes; it.remove() }
         }
-    }
-
-    suspend fun replaceAll(source: String, transform: suspend (Layer) -> Layer) {
-        val entries = synchronized(this) { map.entries.filter { it.key.source == source }.map { it.key to it.value } }
-        for ((key, layer) in entries) put(key, transform(layer))
     }
 
     @get:Synchronized val size: Int get() = map.size

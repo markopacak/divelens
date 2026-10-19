@@ -3,6 +3,7 @@ package com.markopacak.divelens.correction
 import com.markopacak.divelens.analysis.Correction
 import com.markopacak.divelens.analysis.CorrectionMap
 import com.markopacak.divelens.analysis.CorrectionParams
+import com.markopacak.divelens.analysis.V1Model
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -26,7 +27,8 @@ class PhotoPreviewStoreTest {
         override suspend fun prepare(source: String): Prepared<String> {
             log += "prepare $source"
             run(source)
-            return Prepared(correction(), "thumb $source", rotation = 90)
+            val renderer = ThumbnailRenderer { s -> log += "render $source $s"; "thumb $source at $s" }
+            return Prepared(correction(), "thumb $source", rotation = 90, renderer = renderer)
         }
 
         override suspend fun estimate(source: String): Correction {
@@ -45,7 +47,8 @@ class PhotoPreviewStoreTest {
             if (source in failing) throw IllegalStateException("cannot decode $source")
         }
 
-        private fun correction() = Correction(CorrectionParams.IDENTITY, CorrectionMap(1, 1, FloatArray(4), FloatArray(4)), 400, 300)
+        private fun correction() =
+            Correction(CorrectionParams.IDENTITY.withStrength(V1Model.DEFAULT_STRENGTH), CorrectionMap(1, 1, FloatArray(4), FloatArray(4)), 400, 300)
     }
 
     private val preparer = FakePreparer()
@@ -157,5 +160,91 @@ class PhotoPreviewStoreTest {
         runCurrent()
         assertEquals(400, request.await().width)
         assertTrue(store.entries.value.isEmpty())
+    }
+
+    private fun PhotoPreviewStore<String>.thumbnail(source: String) = (entries.value[source] as PreviewEntry.Ready).thumbnail
+
+    @Test fun strengthIsTheDefaultUntilSet() = runTest {
+        val store = store()
+        store.setPhotos(photos(1))
+        runCurrent()
+        assertEquals(V1Model.DEFAULT_STRENGTH, store.strengthOf("p1"))
+        assertEquals(V1Model.DEFAULT_STRENGTH, store.correction("p1").params.strength)
+        assertEquals(emptyMap<String, Float>(), store.strengths.value)
+        assertEquals("thumb p1", store.thumbnail("p1"))
+    }
+
+    @Test fun strengthIsRoundedClampedAndCarriedByTheCorrection() = runTest {
+        val store = store()
+        store.setPhotos(photos(1, 2))
+        runCurrent()
+        store.correction("p1")
+        preparer.log.clear()
+
+        store.setStrength("p1", 0.404f)
+        assertEquals(mapOf("p1" to 0.4f), store.strengths.value)
+        assertEquals(0.4f, store.correction("p1").params.strength)
+        assertEquals(V1Model.DEFAULT_STRENGTH, store.correction("p2").params.strength)
+        store.setStrength("p2", 1.5f); assertEquals(1f, store.strengthOf("p2"))
+        store.setStrength("p2", -0.2f); assertEquals(0f, store.strengthOf("p2"))
+        store.setStrength("p2", V1Model.DEFAULT_STRENGTH) // back to the default: no entry
+        assertEquals(setOf("p1"), store.strengths.value.keys)
+        runCurrent()
+        // No new estimate for the cached p1; p2 was estimated once when first asked for.
+        assertEquals(listOf("estimate p2"), preparer.log.filter { it.startsWith("estimate") })
+    }
+
+    @Test fun changedStrengthReRendersTheThumbnailOnly() = runTest {
+        val store = store()
+        store.setPhotos(photos(1, 2, 3))
+        runCurrent()
+        preparer.log.clear()
+        store.setStrength("p2", 0.3f)
+        runCurrent()
+        assertEquals(listOf("render p2 0.3"), preparer.log)
+        assertEquals("thumb p2 at 0.3", store.thumbnail("p2"))
+        assertEquals("thumb p1", store.thumbnail("p1"))
+    }
+
+    @Test fun applyToAllSetsAndReRendersEveryPhoto() = runTest {
+        val store = store()
+        store.setPhotos(photos(1, 2, 3))
+        runCurrent()
+        store.setStrength("p1", 0.3f)
+        runCurrent()
+        preparer.log.clear()
+        store.setAllStrengths(0.6f)
+        assertEquals(photos(1, 2, 3).associateWith { 0.6f }, store.strengths.value)
+        runCurrent()
+        assertEquals(photos(1, 2, 3).map { "render $it 0.6" }, preparer.log)
+        assertTrue(preparer.log.none { it.startsWith("estimate") })
+        store.setAllStrengths(V1Model.DEFAULT_STRENGTH)
+        assertEquals(emptyMap<String, Float>(), store.strengths.value)
+    }
+
+    @Test fun strengthSetBeforePreparingIsRenderedOncePrepared() = runTest {
+        val store = store()
+        preparer.gates["p1"] = CompletableDeferred()
+        store.setPhotos(photos(1, 2))
+        runCurrent()
+        store.setAllStrengths(0.5f)
+        preparer.gates.getValue("p1").complete(Unit)
+        runCurrent()
+        // The re-render of p1 goes before preparing p2.
+        assertEquals(listOf("prepare p1", "render p1 0.5", "prepare p2", "render p2 0.5"), preparer.log)
+        assertEquals("thumb p2 at 0.5", store.thumbnail("p2"))
+    }
+
+    @Test fun removedPhotoComesBackAtTheDefault() = runTest {
+        val store = store()
+        store.setPhotos(photos(1, 2))
+        runCurrent()
+        store.setStrength("p1", 0.2f)
+        store.setPhotos(photos(2))
+        assertEquals(emptyMap<String, Float>(), store.strengths.value)
+        store.setPhotos(photos(1, 2))
+        runCurrent()
+        assertEquals(V1Model.DEFAULT_STRENGTH, store.strengthOf("p1"))
+        assertEquals("thumb p1", store.thumbnail("p1"))
     }
 }

@@ -23,6 +23,18 @@
     <string name="preview_unavailable">Preview unavailable</string>
     <string name="detail_unavailable">Full detail unavailable for this photo</string>
 
+    <string name="adjust">Adjust</string>
+    <string name="strength">Strength</string>
+    <string name="percent">%d%%</string>
+    <string name="strength_auto">Auto</string>
+    <string name="reset">Reset</string>
+    <string name="apply_to_all">Apply to all</string>
+    <string name="done">Done</string>
+    <plurals name="applied_to_all">
+        <item quantity="one">Strength %1$d%% applied to %2$d photo</item>
+        <item quantity="other">Strength %1$d%% applied to %2$d photos</item>
+    </plurals>
+
     <string name="status_exporting">Exporting…</string>
     <string name="status_exported">Exported</string>
     <string name="status_failed">Failed</string>

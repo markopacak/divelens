@@ -66,7 +66,7 @@ fun ImportExportScreen(
     onOpen: (Int) -> Unit = {},
     onCloseViewer: () -> Unit = {},
     onViewerPage: (Int) -> Unit = {},
-    viewerStrength: Float? = null,
+    strengths: StrengthControls? = null,
 ) {
     val items = state.workingSet.items
     val running = state.batch as? BatchUi.Running
@@ -150,7 +150,7 @@ fun ImportExportScreen(
     val viewing = state.viewing
     if (viewer != null && viewing != null && viewing in items.indices) {
         // Over the grid, so the grid keeps its scroll position; its Back handler is composed earlier and yields to this one.
-        ViewerScreen(items, viewing, viewer, onViewerPage, onCloseViewer, viewerStrength)
+        ViewerScreen(items, viewing, viewer, onViewerPage, onCloseViewer, strengths)
     }
     (state.batch as? BatchUi.Finished)?.let { SummaryDialog(it, onDismissSummary) }
     if ((state.rejections.isNotEmpty() || state.leftOut > 0) && state.batch !is BatchUi.Finished) {

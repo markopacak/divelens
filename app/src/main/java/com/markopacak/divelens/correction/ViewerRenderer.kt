@@ -13,6 +13,9 @@ class Layer(
     /** Where it sits in the sampled photo it was corrected as, to correct it again (set by the renderer). */
     var place: Placement? = null
 
+    /** The strength [corrected] was made at (set by the renderer). */
+    var strength: Float = Float.NaN
+
     /** Bytes held by both bitmaps. */
     val bytes: Int get() = corrected.allocationByteCount + original.allocationByteCount
 }
@@ -33,12 +36,17 @@ interface ViewerPhoto : AutoCloseable {
     suspend fun base(fitWidth: Int, fitHeight: Int): Layer
 
     /**
-     * Tiles at [sampleSize] covering [visible] (full-resolution display coordinates). Tiles already made are
-     * reused. Returns null if this photo cannot be decoded by region; the viewer then shows only the base.
+     * Tiles at [sampleSize] covering [visible] (full-resolution display coordinates), at the current strength. Tiles
+     * already made are reused, and corrected again from their originals if made at another strength. Returns null if
+     * this photo cannot be decoded by region; the viewer then shows only the base.
      */
     suspend fun tiles(sampleSize: Int, visible: Rect): List<Layer>?
 
-    /** Re-renders the base and kept tiles from their originals at [strength], without new decodes or estimates (design D6). */
+    /**
+     * Re-renders the base from its original at [strength], without new decodes or estimates. Kept tiles are corrected
+     * again only when [tiles] next returns them, so while the slider moves the viewer shows the base alone
+     * (add-strength-slider D5).
+     */
     suspend fun setStrength(strength: Float)
 }
 

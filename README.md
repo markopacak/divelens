@@ -6,7 +6,7 @@ Android app that fixes underwater photos (blue-green cast, missing red, flat con
 
 ## Status
 
-Early development. Today the app imports photos through the system photo picker and exports colour-corrected, full-resolution copies to the gallery (Pictures/DiveLens), keeping date, camera and orientation metadata. The correction is automatic: it rebuilds red from green and blue and stretches green and blue contrast, with parameters estimated per photo, and runs on the GPU (with a CPU fallback). Preview, before/after comparison, sliders and video come later.
+Early development. Today the app imports photos through the system photo picker and exports colour-corrected, full-resolution copies to the gallery (Pictures/DiveLens), keeping date, camera and orientation metadata. The correction is automatic: it rebuilds red from green and blue and stretches green and blue contrast, with parameters estimated per photo, and runs on the GPU (with a CPU fallback). The grid shows corrected thumbnails; a full-screen viewer zooms to real pixels, shows the original while you press and hold, and has a strength slider per photo (with "Apply to all") that the thumbnails and the export follow. Further sliders and video come later.
 
 Planned work is tracked as [OpenSpec](https://github.com/Fission-AI/OpenSpec) changes in `openspec/changes/`.
 

@@ -27,6 +27,7 @@ import com.markopacak.divelens.export.MediaStorePhotoWriter
 import com.markopacak.divelens.importer.PhotoImporter
 import com.markopacak.divelens.ui.ImportExportScreen
 import com.markopacak.divelens.ui.ImportExportViewModel
+import com.markopacak.divelens.ui.StrengthControls
 import com.markopacak.divelens.ui.theme.DiveLensTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
                 val vm: ImportExportViewModel = viewModel(factory = viewModelFactory { initializer { createViewModel() } })
                 val state by vm.state.collectAsStateWithLifecycle()
                 val previews by vm.previews.collectAsStateWithLifecycle()
+                val strengths by vm.strengths.collectAsStateWithLifecycle()
                 val viewer = remember(vm) { vm.viewer }
                 val room = state.workingSet.room
                 val contract = remember(room) { ActivityResultContracts.PickMultipleVisualMedia(pickerMaxItems(room)) }
@@ -59,6 +61,7 @@ class MainActivity : ComponentActivity() {
                     onOpen = vm::openViewer,
                     onCloseViewer = vm::closeViewer,
                     onViewerPage = vm::onViewerPage,
+                    strengths = if (vm.adjustable) StrengthControls(strengths, vm.defaultStrength, vm::setStrength, vm::applyStrengthToAll) else null,
                 )
             }
         }
@@ -70,8 +73,8 @@ class MainActivity : ComponentActivity() {
         val importer = PhotoImporter(resolver)
         val previewScope = CoroutineScope(SupervisorJob())
         val store = PhotoPreviewStore(AndroidPhotoPreparer(resolver), previewScope)
-        // The export applies the correction the preview shows.
-        val writer = MediaStorePhotoWriter(resolver, applicationContext.cacheDir, CorrectionPhotoProcessor(store::correction))
+        // The export applies the correction the preview shows, at the photo's strength.
+        val writer = MediaStorePhotoWriter(resolver, applicationContext.cacheDir, CorrectionPhotoProcessor(store::correction, store::strengthOf))
         val exportItem = ExportItemUseCase(AlwaysAllowExportGate, writer)
         val viewer = GpuViewerRenderer(resolver, store::correction)
         return ImportExportViewModel(importer::import, BatchExporter { exportItem(it) }, store, viewer).apply {

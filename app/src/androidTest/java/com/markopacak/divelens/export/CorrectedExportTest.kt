@@ -54,13 +54,24 @@ class CorrectedExportTest {
 
     /** Spec "Preview matches the export": the export applies the shared correction, as the CPU reference does. */
     @Test fun exportAppliesTheSharedCorrection() = runBlocking {
+        assertExportMatchesTheCpuReference(processor, strength = null)
+    }
+
+    /** Spec "Strength chosen by the user": a photo set to 40% exports at strength 0.4. */
+    @Test fun exportUsesThePhotosStrength() = runBlocking {
+        val atForty = CorrectionPhotoProcessor({ estimator.estimate(Uri.parse(it)) }, strengthFor = { 0.4f })
+        assertExportMatchesTheCpuReference(atForty, strength = 0.4f)
+    }
+
+    private suspend fun assertExportMatchesTheCpuReference(processor: PhotoProcessor, strength: Float?) {
         val source = TestMedia.jpegWithExif("shared.jpg", 4800, 600) // wide enough for a sample size of 2
         var exported: IntArray? = null
         val capture = PhotoProcessor { s, input -> processor.process(s, input).also { exported = pixels(it) } }
         export(source, capture)
 
         val reference = decode(source).copy(Bitmap.Config.ARGB_8888, true)
-        CorrectionPhotoProcessor.applyOnCpu(reference, estimator.estimate(source))
+        val correction = estimator.estimate(source).let { if (strength != null) it.withStrength(strength) else it }
+        CorrectionPhotoProcessor.applyOnCpu(reference, correction)
         val expected = pixels(reference)
         val actual = exported!!
         assertEquals(expected.size, actual.size)

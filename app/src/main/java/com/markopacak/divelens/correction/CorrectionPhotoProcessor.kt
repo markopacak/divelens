@@ -26,16 +26,24 @@ fun interface CorrectionSource {
  *
  * Without [corrections], or if it fails, the correction is estimated from the input bitmap itself, as before
  * the preview existed; tests of in-memory bitmaps use that.
+ *
+ * Each photo is corrected at [strengthFor] its source (add-strength-slider D2). At strength 0 the input is returned
+ * unchanged: no correction is looked up and nothing runs on the GPU.
  */
 class CorrectionPhotoProcessor(
     private val corrections: CorrectionSource? = null,
-    private val strength: Float = V1Model.DEFAULT_STRENGTH,
+    private val strengthFor: (String) -> Float = { V1Model.DEFAULT_STRENGTH },
     private val gpu: (Bitmap, Correction) -> Unit = GlCorrectionRenderer()::apply,
 ) : PhotoProcessor {
 
     override suspend fun process(source: String, input: Bitmap): Bitmap {
+        val strength = strengthFor(source)
+        if (strength == 0f) {
+            Log.i(TAG, "strength 0 for ${input.width}x${input.height}: exported uncorrected")
+            return input
+        }
         val start = SystemClock.elapsedRealtime()
-        val correction = correctionFor(source, input)
+        val correction = correctionFor(source, input, strength)
         val estimated = SystemClock.elapsedRealtime()
         var path = "GPU"
         try {
@@ -50,10 +58,10 @@ class CorrectionPhotoProcessor(
         return input
     }
 
-    private suspend fun correctionFor(source: String, input: Bitmap): Correction {
+    private suspend fun correctionFor(source: String, input: Bitmap, strength: Float): Correction {
         if (corrections != null) {
             try {
-                return corrections.correction(source).at(input.width, input.height)
+                return corrections.correction(source).at(input.width, input.height).withStrength(strength)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

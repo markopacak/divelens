@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.markopacak.divelens.analysis.V1Model
 import com.markopacak.divelens.batch.BatchEvent
 import com.markopacak.divelens.batch.BatchExporter
 import com.markopacak.divelens.correction.PhotoPreviewStore
@@ -56,6 +57,13 @@ class ImportExportViewModel(
 
     val previews: StateFlow<Map<String, PreviewEntry<Bitmap>>> = previewStore?.entries ?: MutableStateFlow(emptyMap())
 
+    /** Strengths the user set per photo (add-strength-slider D2); photos without one are at [defaultStrength]. */
+    val strengths: StateFlow<Map<String, Float>> = previewStore?.strengths ?: MutableStateFlow(emptyMap())
+    val defaultStrength: Float = previewStore?.defaultStrength ?: V1Model.DEFAULT_STRENGTH
+
+    /** Whether the viewer offers the strength panel: only with a store that applies it to the export. */
+    val adjustable: Boolean get() = previewStore != null
+
     init {
         if (previewStore != null) {
             viewModelScope.launch {
@@ -92,6 +100,15 @@ class ImportExportViewModel(
         val items = _state.value.workingSet.items
         val sources = listOf(index, index + 1, index - 1).filter { it in items.indices }.map { items[it].item.source }
         previewStore?.let { store -> viewModelScope.launch { store.prioritize(sources) } }
+    }
+
+    /** A photo exported during a batch uses the strength it has when its turn comes. */
+    fun setStrength(source: String, strength: Float) {
+        previewStore?.setStrength(source, strength)
+    }
+
+    fun applyStrengthToAll(strength: Float) {
+        previewStore?.let { store -> viewModelScope.launch { store.setAllStrengths(strength) } }
     }
 
     fun dismissRejections() = _state.update { it.copy(rejections = emptyList(), leftOut = 0) }

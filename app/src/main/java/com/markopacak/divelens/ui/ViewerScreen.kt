@@ -8,16 +8,28 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,11 +52,13 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -54,7 +68,9 @@ import com.markopacak.divelens.correction.Layer
 import com.markopacak.divelens.correction.ViewerPhoto
 import com.markopacak.divelens.correction.ViewerRenderer
 import com.markopacak.divelens.media.WorkingItem
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withTimeoutOrNull
 import me.saket.telephoto.ExperimentalTelephotoApi
@@ -75,8 +91,27 @@ val ViewerZoom = SemanticsPropertyKey<Float>("ViewerZoom")
 const val HOLD_TO_COMPARE_MILLIS = 250L
 
 /**
+ * The strength of each photo for the viewer's adjustment panel (add-strength-slider D2, D4). Photos missing from
+ * [values] are at [default].
+ */
+class StrengthControls(
+    val values: Map<String, Float>,
+    val default: Float,
+    val onChange: (source: String, strength: Float) -> Unit,
+    val onApplyToAll: (strength: Float) -> Unit,
+) {
+    fun of(source: String): Float = values[source] ?: default
+}
+
+/** How long the "applied to all" message stays. */
+private const val MESSAGE_MILLIS = 3000L
+
+private val AUTO_LABEL_WIDTH = 48.dp
+
+/**
  * Full-screen viewer over the working set (spec "Full-screen viewer", design D4): swipe between photos,
- * zoom up to 100% with corrected tiles, press and hold to see the original. Back closes it.
+ * zoom up to 100% with corrected tiles, press and hold to see the original. Back closes it. With [strengths],
+ * a panel adjusts the strength of the photo shown (add-strength-slider D4).
  */
 @Composable
 fun ViewerScreen(
@@ -85,25 +120,115 @@ fun ViewerScreen(
     renderer: ViewerRenderer,
     onPageChanged: (Int) -> Unit,
     onClose: () -> Unit,
-    strength: Float? = null,
+    strengths: StrengthControls? = null,
 ) {
     BackHandler(onBack = onClose)
     val pager = rememberPagerState(initialPage = initialIndex.coerceIn(0, max(0, items.size - 1))) { items.size }
     val pageChanged by rememberUpdatedState(onPageChanged)
     LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { pageChanged(it) } }
-    HorizontalPager(
-        state = pager,
-        key = { items[it].item.source },
-        beyondViewportPageCount = 1,
-        modifier = Modifier.fillMaxSize().background(Color.Black).testTag("viewer"),
-    ) { page ->
-        ViewerPage(items[page], renderer, strength)
+    var dragging by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        HorizontalPager(
+            state = pager,
+            key = { items[it].item.source },
+            beyondViewportPageCount = 1,
+            modifier = Modifier.fillMaxSize().testTag("viewer"),
+        ) { page ->
+            val source = items[page].item.source
+            ViewerPage(items[page], renderer, strengths?.of(source), dragging && page == pager.currentPage)
+        }
+        // A sibling of the pager: its touches reach neither hold to compare nor zoom and swipe.
+        if (strengths != null && items.isNotEmpty()) {
+            val source = items[pager.currentPage.coerceIn(items.indices)].item.source
+            AdjustmentPanel(
+                strength = strengths.of(source),
+                default = strengths.default,
+                photoCount = items.size,
+                onChange = { strengths.onChange(source, it) },
+                onDragging = { dragging = it },
+                onApplyToAll = strengths.onApplyToAll,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+    }
+}
+
+/**
+ * The adjustment panel (add-strength-slider D4): closed, an "Adjust" button; open, the strength slider from 0 to
+ * 100% with the default marked "Auto", Reset and Apply to all. Its open state is kept across swipes.
+ */
+@Composable
+private fun AdjustmentPanel(
+    strength: Float,
+    default: Float,
+    photoCount: Int,
+    onChange: (Float) -> Unit,
+    onDragging: (Boolean) -> Unit,
+    onApplyToAll: (Float) -> Unit,
+    modifier: Modifier,
+) {
+    var open by remember { mutableStateOf(false) }
+    var applied by remember { mutableStateOf<Pair<Int, Int>?>(null) } // percent, photos
+    LaunchedEffect(applied) { if (applied != null) { delay(MESSAGE_MILLIS); applied = null } }
+    val percent = (strength * 100).roundToInt()
+    if (!open) {
+        Box(modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)) {
+            FilledTonalButton(onClick = { open = true }, modifier = Modifier.align(Alignment.BottomEnd).testTag("adjust")) {
+                Text(stringResource(R.string.adjust))
+            }
+        }
+        return
+    }
+    Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), modifier = modifier.fillMaxWidth().testTag("adjustment_panel")) {
+        Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.strength), style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.weight(1f))
+                Text(stringResource(R.string.percent, percent), style = MaterialTheme.typography.titleSmall, modifier = Modifier.testTag("strength_value"))
+            }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                // The default's position: the 4 dp thumb's track runs from 2 dp to the width minus 2 dp.
+                val mark = 2.dp + (maxWidth - 4.dp) * default
+                Column {
+                    Slider(
+                        value = strength,
+                        onValueChange = { onDragging(true); onChange(it) },
+                        onValueChangeFinished = { onDragging(false) },
+                        modifier = Modifier.fillMaxWidth().testTag("strength_slider"),
+                    )
+                    Box(Modifier.offset(x = mark - 1.dp).width(2.dp).height(6.dp).background(MaterialTheme.colorScheme.onSurfaceVariant))
+                    Text(
+                        stringResource(R.string.strength_auto),
+                        style = MaterialTheme.typography.labelSmall,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.offset(x = mark - AUTO_LABEL_WIDTH / 2).width(AUTO_LABEL_WIDTH),
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { onChange(default) }, enabled = percent != (default * 100).roundToInt()) {
+                    Text(stringResource(R.string.reset))
+                }
+                TextButton(onClick = { onApplyToAll(strength); applied = percent to photoCount }) {
+                    Text(stringResource(R.string.apply_to_all))
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { open = false }) { Text(stringResource(R.string.done)) }
+            }
+            applied?.let { (p, n) ->
+                Text(
+                    pluralStringResource(R.plurals.applied_to_all, n, p, n),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 4.dp).testTag("applied_message"),
+                )
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalTelephotoApi::class)
 @Composable
-private fun ViewerPage(item: WorkingItem, renderer: ViewerRenderer, strength: Float?) {
+private fun ViewerPage(item: WorkingItem, renderer: ViewerRenderer, strength: Float?, dragging: Boolean) {
     val source = item.item.source
     val tapped = remember(source) { SystemClock.elapsedRealtime() }
     val opened by produceState<Result<ViewerPhoto>?>(null, source) {
@@ -127,7 +252,7 @@ private fun ViewerPage(item: WorkingItem, renderer: ViewerRenderer, strength: Fl
             }
             else -> {
                 val viewport = IntSize(constraints.maxWidth, constraints.maxHeight)
-                PhotoCanvas(photo, viewport, holding, strength, tapped)
+                PhotoCanvas(photo, viewport, holding, strength, dragging, tapped)
             }
         }
     }
@@ -135,16 +260,28 @@ private fun ViewerPage(item: WorkingItem, renderer: ViewerRenderer, strength: Fl
 
 @OptIn(ExperimentalTelephotoApi::class)
 @Composable
-private fun PhotoCanvas(photo: ViewerPhoto, viewport: IntSize, holding: Boolean, strength: Float?, shownSince: Long) {
+private fun PhotoCanvas(photo: ViewerPhoto, viewport: IntSize, holding: Boolean, strength: Float?, dragging: Boolean, shownSince: Long) {
     val fitScale = min(viewport.width.toFloat() / photo.width, viewport.height.toFloat() / photo.height)
     // Telephoto's zoom factors are relative to the photo fitted to the screen, so 100% (one photo pixel per
     // screen pixel) is 1 / fitScale.
     val zoom = rememberZoomableState(zoomSpec = ZoomSpec(maxZoomFactor = max(1f, 1f / fitScale)), autoApplyTransformations = false)
     LaunchedEffect(photo) { zoom.setContentLocation(ZoomableContentLocation.scaledInsideAndCenterAligned(Size(photo.width.toFloat(), photo.height.toFloat()))) }
     var version by remember { mutableStateOf(0) }
-    LaunchedEffect(photo, strength) {
-        if (strength != null) {
-            photo.setStrength(strength)
+    var tiles by remember { mutableStateOf<List<Layer>>(emptyList()) }
+    // Timing logs for the device check: when the last strength change started, and whether its detail is still to come.
+    var changedAt by remember { mutableStateOf(0L) }
+    var detailPending by remember { mutableStateOf(false) }
+    val currentStrength by rememberUpdatedState(strength)
+    // Strength changes re-render the base only; the newest value wins while a render runs (add-strength-slider D5).
+    LaunchedEffect(photo) {
+        var first = true
+        snapshotFlow { currentStrength }.conflate().collect { s ->
+            if (s == null) return@collect
+            val start = SystemClock.elapsedRealtime()
+            photo.setStrength(s)
+            tiles = emptyList() // stale until requested again at the new strength
+            if (!first) { changedAt = start; detailPending = true }
+            first = false
             version++
         }
     }
@@ -154,7 +291,10 @@ private fun PhotoCanvas(photo: ViewerPhoto, viewport: IntSize, holding: Boolean,
     LaunchedEffect(base != null) {
         if (base != null) Log.i("Viewer", "${photo.width}x${photo.height} shown corrected ${SystemClock.elapsedRealtime() - shownSince} ms after opening")
     }
-    var tiles by remember { mutableStateOf<List<Layer>>(emptyList()) }
+    LaunchedEffect(base) {
+        if (base != null && changedAt != 0L) Log.i("Viewer", "strength ${base?.strength} shown ${SystemClock.elapsedRealtime() - changedAt} ms after the change")
+        changedAt = 0L
+    }
     var detailUnavailable by remember { mutableStateOf(false) }
 
     // Content rectangle on screen after zoom and pan.
@@ -163,8 +303,10 @@ private fun PhotoCanvas(photo: ViewerPhoto, viewport: IntSize, holding: Boolean,
         runCatching { bounds.rectIn(CoordinateSpace.Viewport) }.getOrNull()?.takeIf { it.width > 0f && it.height > 0f }
     }
 
-    LaunchedEffect(photo, base, version) {
+    LaunchedEffect(photo, base, version, dragging) {
         val baseLayer = base ?: return@LaunchedEffect
+        if (dragging) return@LaunchedEffect // the base alone while the slider moves
+        val released = SystemClock.elapsedRealtime()
         val baseSample = max(1, photo.width / max(1, baseLayer.corrected.width))
         snapshotFlow { contentRect() }.distinctUntilChanged().collectLatest { rect ->
             if (rect == null) return@collectLatest
@@ -186,6 +328,10 @@ private fun PhotoCanvas(photo: ViewerPhoto, viewport: IntSize, holding: Boolean,
             val made = photo.tiles(n, visible)
             detailUnavailable = made == null
             tiles = made.orEmpty()
+            if (detailPending) {
+                Log.i("Viewer", "${tiles.size} tiles at 1/$n shown ${SystemClock.elapsedRealtime() - released} ms after the slider was released")
+                detailPending = false
+            }
         }
     }
 

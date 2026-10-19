@@ -34,4 +34,23 @@ class AndroidPhotoPreparerTest {
         val red = meanRed(thumb); val originalRed = meanRed(original)
         assertTrue("mean red $originalRed -> $red", red > originalRed + 20)
     }
+
+    /** add-strength-slider D3: the thumbnail at another strength, from the kept shift, equals a CPU correction at it. */
+    @Test fun reRenderedThumbnailMatchesTheCpuCorrection() = runBlocking {
+        val source = TestMedia.jpegWithExif("strength.jpg", 1600, 1200)
+        val prepared = preparer.prepare(source.toString())
+        val rendered = prepared.renderer!!.render(0.3f)
+
+        val reduced = CorrectionEstimator(TestMedia.resolver).decode(source)
+        val reference = AndroidPhotoPreparer.downscale(reduced.bitmap, AndroidPhotoPreparer.THUMBNAIL_SIZE)
+        CorrectionPhotoProcessor.applyOnCpu(reference, prepared.correction.at(reference.width, reference.height).withStrength(0.3f))
+        val expected = AndroidPhotoPreparer.rotate(reference, 90)
+
+        assertEquals(expected.width to expected.height, rendered.width to rendered.height)
+        val a = IntArray(expected.width * expected.height).also { expected.getPixels(it, 0, expected.width, 0, 0, expected.width, expected.height) }
+        val b = IntArray(a.size).also { rendered.getPixels(it, 0, rendered.width, 0, 0, rendered.width, rendered.height) }
+        var worst = 0
+        for (i in a.indices) for (c in intArrayOf(16, 8, 0)) worst = maxOf(worst, kotlin.math.abs((a[i] shr c and 0xff) - (b[i] shr c and 0xff)))
+        assertTrue("largest channel difference $worst", worst <= 2)
+    }
 }

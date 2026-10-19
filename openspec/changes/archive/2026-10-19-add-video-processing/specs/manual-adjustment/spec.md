@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Strength slider
-The full-screen viewer SHALL show a strength slider for the photo or video shown, in a panel that is always visible at the bottom of the screen. The slider SHALL range from 0% (original colours) to 100% (full correction), SHALL start at the automatic default strength, and SHALL mark the default's position. Moving the slider SHALL NOT change the zoom or position of the photo. On a video, the playback controls sit above the panel and look different from it (a white time bar with the elapsed and total time), so the two sliders cannot be mistaken for each other.
+The full-screen viewer SHALL show a strength slider for the photo or video shown, in a panel that is always visible at the bottom of the screen. The slider SHALL range from 0% (original colours) to 100% (full correction), SHALL start at the automatic default strength, and SHALL mark the default's position. Moving the slider SHALL NOT change the zoom or position of the photo.
 
 #### Scenario: Default position
 - **WHEN** the user opens a photo they have not adjusted
@@ -15,7 +15,7 @@ The full-screen viewer SHALL show a strength slider for the photo or video shown
 
 #### Scenario: Video with its controls
 - **WHEN** the user opens a video
-- **THEN** the playback controls are shown at the bottom, directly above the strength panel, clear of the status bar
+- **THEN** the playback controls are shown at the bottom, directly above the strength panel and clear of the status bar, with a white time bar and the elapsed and total time, so the two sliders cannot be mistaken for each other
 
 ### Requirement: Strength per photo
 Each photo and each video SHALL keep its own strength while it is in the working set: swiping to another item shows that item's strength, and returning shows the value set before. "Reset" SHALL return the item shown to the default strength. "Apply to all" SHALL set every photo and video in the working set to the strength of the item shown. An item removed from the working set and added again SHALL start at the default.

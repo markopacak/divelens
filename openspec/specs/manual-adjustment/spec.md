@@ -7,18 +7,22 @@ Lets the user adjust the automatic correction of each photo before export, start
 ## Requirements
 
 ### Requirement: Strength slider
-The full-screen viewer SHALL offer a strength slider for the photo shown, in a panel the user can open and close. The slider SHALL range from 0% (original colours) to 100% (full correction), SHALL start at the automatic default strength, and SHALL mark the default's position. Opening, closing or moving the slider SHALL NOT change the zoom or position of the photo.
+The full-screen viewer SHALL show a strength slider for the photo or video shown, in a panel that is always visible at the bottom of the screen. The slider SHALL range from 0% (original colours) to 100% (full correction), SHALL start at the automatic default strength, and SHALL mark the default's position. Moving the slider SHALL NOT change the zoom or position of the photo.
 
 #### Scenario: Default position
-- **WHEN** the user opens the panel for a photo they have not adjusted
-- **THEN** the slider is at the default strength, shown as a percentage
+- **WHEN** the user opens a photo they have not adjusted
+- **THEN** the slider is shown at the default strength, as a percentage
 
 #### Scenario: Less correction
 - **WHEN** the user moves the slider to 0%
 - **THEN** the viewer shows the photo with its original colours
 
+#### Scenario: Video with its controls
+- **WHEN** the user opens a video
+- **THEN** the playback controls are shown at the bottom, directly above the strength panel and clear of the status bar, with a white time bar and the elapsed and total time, so the two sliders cannot be mistaken for each other
+
 ### Requirement: Strength per photo
-Each photo SHALL keep its own strength while it is in the working set: swiping to another photo shows that photo's strength, and returning shows the value set before. "Reset" SHALL return the photo shown to the default strength. "Apply to all" SHALL set every photo in the working set to the strength of the photo shown. A photo removed from the working set and added again SHALL start at the default.
+Each photo and each video SHALL keep its own strength while it is in the working set: swiping to another item shows that item's strength, and returning shows the value set before. "Reset" SHALL return the item shown to the default strength. "Apply to all" SHALL set every photo and video in the working set to the strength of the item shown. An item removed from the working set and added again SHALL start at the default.
 
 #### Scenario: Strength stays with its photo
 - **WHEN** the user sets photo 2 to 40%, swipes to photo 3, and swipes back
@@ -31,6 +35,10 @@ Each photo SHALL keep its own strength while it is in the working set: swiping t
 #### Scenario: Reset
 - **WHEN** the user chooses "Reset" on a photo set to 40%
 - **THEN** the photo returns to the default strength
+
+#### Scenario: Strength of a video
+- **WHEN** the user sets a video to 50% while it plays
+- **THEN** the playing video changes to 50% without stopping, its thumbnail follows, and the whole clip is exported at 50%
 
 ### Requirement: Adjustments are shown everywhere
 A changed strength SHALL be shown in the viewer while adjusting, in the photo's thumbnail once it is re-rendered, and in the export. The viewer at 100% zoom SHALL still match the export of that photo at its strength, as the preview-compare spec requires. Hold to see the original SHALL keep working while the panel is open.

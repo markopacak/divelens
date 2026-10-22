@@ -1,8 +1,10 @@
 # Reference fit
 
-These scripts fit DiveLens's automatic correction to before/after pairs from other apps (RefApp), and prepare the data for the app's reference check (`ReferenceSetTest` in `:core:analysis`).
+These scripts fit DiveLens's automatic correction to before/after pairs from other underwater-correction apps, and prepare the data for the app's reference check (`ReferenceSetTest` in `:core:analysis`).
 
 They need personal reference media, which never goes into the repository. Without it, nothing here runs and nothing in the build depends on it.
+
+"RefApp" and "RefApp2" stand for the two reference apps. Throughout the repository, measurements such as "ΔE to RefApp" compare DiveLens with the results of the main reference app on the same photos and videos. The apps are not named, and no media from them is in the repository.
 
 ## Training set layout
 

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -70,6 +71,13 @@ import com.markopacak.divelens.correction.ViewerRenderer
 import com.markopacak.divelens.analysis.V1Model
 import com.markopacak.divelens.media.MediaItem
 import com.markopacak.divelens.media.WorkingItem
+import com.markopacak.divelens.ui.help.GestureHelpButton
+import com.markopacak.divelens.ui.help.TIP_DELAY_MILLIS
+import com.markopacak.divelens.ui.help.Tip
+import com.markopacak.divelens.ui.help.TipBubble
+import com.markopacak.divelens.ui.help.ViewerGuidance
+import com.markopacak.divelens.ui.help.nextTip
+import com.markopacak.divelens.ui.help.onEveryTouchEnd
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.conflate
@@ -114,7 +122,7 @@ private val AUTO_LABEL_WIDTH = 48.dp
  * Full-screen viewer over the working set (spec "Full-screen viewer", design D4): swipe between photos and videos,
  * zoom photos up to 100% with corrected tiles, press and hold to see the original. Back closes it. With [strengths],
  * a panel adjusts the strength of the item shown (add-strength-slider D4). With [videos], videos play corrected
- * ([VideoPage]).
+ * ([VideoPage]). With [guidance], one-time gesture tips appear; a (?) button explains the gestures (add-help-and-legal).
  */
 @Composable
 fun ViewerScreen(
@@ -125,6 +133,7 @@ fun ViewerScreen(
     onClose: () -> Unit,
     strengths: StrengthControls? = null,
     videos: VideoSupport? = null,
+    guidance: ViewerGuidance? = null,
 ) {
     BackHandler(onBack = onClose)
     val pager = rememberPagerState(initialPage = initialIndex.coerceIn(0, max(0, items.size - 1))) { items.size }
@@ -133,12 +142,24 @@ fun ViewerScreen(
     var dragging by remember { mutableStateOf(false) }
     var panelHeight by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
+    fun isVideoPage(page: Int) = items.getOrNull(page)?.item is MediaItem.Video && videos != null
+    // The one-time tip of the settled page (add-help-and-legal D6): shown after a short delay, gone when a touch ends.
+    val candidate = guidance?.let { nextTip(isVideoPage(pager.settledPage), it.pending) }
+    var tip by remember { mutableStateOf<Tip?>(null) }
+    LaunchedEffect(candidate, pager.settledPage) {
+        tip = null
+        if (candidate != null) { delay(TIP_DELAY_MILLIS); tip = candidate }
+    }
+    val shownTip by rememberUpdatedState(tip)
+    val currentGuidance by rememberUpdatedState(guidance)
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(
             state = pager,
             key = { items[it].item.source },
             beyondViewportPageCount = 1,
-            modifier = Modifier.fillMaxSize().testTag("viewer"),
+            modifier = Modifier.fillMaxSize().testTag("viewer").onEveryTouchEnd {
+                shownTip?.let { currentGuidance?.onDone(it); tip = null }
+            },
         ) { page ->
             val item = items[page]
             val source = item.item.source
@@ -150,7 +171,11 @@ fun ViewerScreen(
                 ViewerPage(item, renderer, strengths?.of(source), dragging && page == pager.currentPage)
             }
         }
-        // A sibling of the pager: its touches reach neither hold to compare nor zoom and swipe.
+        tip?.let { TipBubble(it, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp)) }
+        // Siblings of the pager: their touches reach neither hold to compare nor zoom and swipe.
+        if (items.isNotEmpty()) {
+            GestureHelpButton(isVideoPage(pager.currentPage), Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp))
+        }
         if (strengths != null && items.isNotEmpty()) {
             val source = items[pager.currentPage.coerceIn(items.indices)].item.source
             AdjustmentPanel(

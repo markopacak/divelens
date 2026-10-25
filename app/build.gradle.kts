@@ -1,4 +1,7 @@
 import java.util.Properties
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedComponentResult
+import org.gradle.api.artifacts.result.ResolvedDependencyResult
 
 plugins {
     alias(libs.plugins.android.application)
@@ -82,4 +85,80 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+/**
+ * Fails when the app ships a library whose Maven group no "Maven groups:" line in NOTICE covers
+ * (add-help-and-legal D5). A pattern ending in ".*" covers every group below it.
+ */
+abstract class CheckNotice : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val notice: RegularFileProperty
+
+    @get:Input
+    abstract val groups: SetProperty<String>
+
+    @get:OutputFile
+    abstract val report: RegularFileProperty
+
+    @TaskAction
+    fun check() {
+        val patterns = notice.get().asFile.readLines().map { it.trim() }.filter { it.startsWith("Maven groups:") }
+            .flatMap { line -> line.removePrefix("Maven groups:").split(",").map { it.trim() } }
+        fun covered(group: String) = patterns.any { if (it.endsWith(".*")) group.startsWith(it.removeSuffix("*")) else group == it }
+        val missing = groups.get().filterNot(::covered).sorted()
+        if (missing.isNotEmpty()) {
+            throw GradleException("NOTICE does not list these shipped libraries (add an entry with a \"Maven groups:\" line): ${missing.joinToString()}")
+        }
+        report.get().asFile.writeText(groups.get().sorted().joinToString("\n"))
+    }
+}
+
+val checkNotice by tasks.registering(CheckNotice::class) {
+    notice = rootProject.layout.projectDirectory.file("NOTICE")
+    groups = configurations.named("releaseRuntimeClasspath").flatMap { it.incoming.resolutionResult.rootComponent }.map { root ->
+        val seen = mutableSetOf<ResolvedComponentResult>()
+        val found = sortedSetOf<String>()
+        fun walk(component: ResolvedComponentResult) {
+            if (!seen.add(component)) return
+            (component.id as? ModuleComponentIdentifier)?.let { found += it.group }
+            component.dependencies.filterIsInstance<ResolvedDependencyResult>().forEach { walk(it.selected) }
+        }
+        walk(root)
+        found
+    }
+    report = layout.buildDirectory.file("reports/notice/groups.txt")
+}
+
+tasks.named("preBuild") { dependsOn(checkNotice) }
+
+/**
+ * Copies the legal texts from the repository into a generated `res/raw` directory, so the app shows exactly the
+ * published files (add-help-and-legal D4): R.raw.legal_license, legal_notice, legal_privacy and legal_terms.
+ */
+abstract class CopyLegalTexts : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val texts: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val raw = outputDir.get().dir("raw").asFile
+        raw.deleteRecursively()
+        raw.mkdirs()
+        val names = mapOf("LICENSE" to "legal_license.txt", "NOTICE" to "legal_notice.txt", "PRIVACY.md" to "legal_privacy.md", "TERMS.md" to "legal_terms.md")
+        texts.files.forEach { file -> file.copyTo(raw.resolve(names.getValue(file.name)), overwrite = true) }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val copy = tasks.register<CopyLegalTexts>("copy${variant.name.replaceFirstChar { it.uppercase() }}LegalTexts") {
+            texts.from(rootProject.files("LICENSE", "NOTICE", "docs/PRIVACY.md", "docs/TERMS.md"))
+        }
+        variant.sources.res?.addGeneratedSourceDirectory(copy, CopyLegalTexts::outputDir)
+    }
 }

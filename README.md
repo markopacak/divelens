@@ -58,3 +58,5 @@ keyPassword=...
 ## License
 
 GPL-3.0-only, with an additional permission for the Google Play Billing and Play services libraries. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+The app's [privacy policy](docs/PRIVACY.md) and [terms of use](docs/TERMS.md) are kept in `docs/`. The build copies them into the app, so the two versions are always the same.

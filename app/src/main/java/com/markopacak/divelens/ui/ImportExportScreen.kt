@@ -20,6 +20,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +58,8 @@ import com.markopacak.divelens.media.ItemStatus
 import com.markopacak.divelens.media.MediaItem
 import com.markopacak.divelens.media.WorkingItem
 import com.markopacak.divelens.media.WorkingSet
+import com.markopacak.divelens.ui.help.HelpIcons
+import com.markopacak.divelens.ui.help.ViewerGuidance
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +79,8 @@ fun ImportExportScreen(
     onViewerPage: (Int) -> Unit = {},
     strengths: StrengthControls? = null,
     videos: VideoSupport? = null,
+    onOpenSettings: (() -> Unit)? = null,
+    guidance: ViewerGuidance? = null,
 ) {
     val items = state.workingSet.items
     val running = state.batch as? BatchUi.Running
@@ -83,7 +89,21 @@ fun ImportExportScreen(
     BackHandler(enabled = items.isNotEmpty()) {
         if (running != null) confirmCancel = true else onClear()
     }
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.app_name)) }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.app_name)) },
+                actions = {
+                    // Settings & help (add-help-and-legal D1), also while an export runs.
+                    if (onOpenSettings != null) {
+                        IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("open_settings")) {
+                            Icon(HelpIcons.Settings, contentDescription = stringResource(R.string.settings_help))
+                        }
+                    }
+                },
+            )
+        },
+    ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().padding(horizontal = 16.dp)) {
             // Reading the picked files takes a moment (videos are probed for their codec and size): say so at once.
             if (state.importing) {
@@ -167,7 +187,7 @@ fun ImportExportScreen(
     val viewing = state.viewing
     if (viewer != null && viewing != null && viewing in items.indices) {
         // Over the grid, so the grid keeps its scroll position; its Back handler is composed earlier and yields to this one.
-        ViewerScreen(items, viewing, viewer, onViewerPage, onCloseViewer, strengths, videos)
+        ViewerScreen(items, viewing, viewer, onViewerPage, onCloseViewer, strengths, videos, guidance)
     }
     (state.batch as? BatchUi.Finished)?.let { SummaryDialog(it, onDismissSummary) }
     if ((state.rejections.isNotEmpty() || state.leftOut > 0) && state.batch !is BatchUi.Finished) {

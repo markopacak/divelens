@@ -2,6 +2,7 @@ package com.markopacak.divelens.ui
 
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,6 +25,8 @@ import com.markopacak.divelens.importer.RejectionReason
 import com.markopacak.divelens.media.MediaItem
 import com.markopacak.divelens.media.WorkingItem
 import com.markopacak.divelens.media.WorkingSet
+import com.markopacak.divelens.ui.help.HelpActions
+import com.markopacak.divelens.ui.help.SettingsHelpScreen
 import com.markopacak.divelens.ui.theme.DiveLensTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,17 +47,34 @@ class ImportExportScreenTest {
     private fun setScreen() {
         rule.setContent {
             DiveLensTheme {
-                ImportExportScreen(
-                    state = state,
-                    previews = previews,
-                    onSelectPhotos = { events += "select" },
-                    onRemove = { events += "remove $it" },
-                    onClear = { events += "clear" },
-                    onExport = { events += "export" },
-                    onCancel = { events += "cancel" },
-                    onDismissSummary = { events += "dismiss" },
-                    onDismissRejections = { events += "dismissRejections" },
-                )
+                startScreen(onOpenSettings = { events += "settings" })
+            }
+        }
+    }
+
+    @Composable
+    private fun startScreen(onOpenSettings: () -> Unit) {
+        ImportExportScreen(
+            state = state,
+            previews = previews,
+            onSelectPhotos = { events += "select" },
+            onRemove = { events += "remove $it" },
+            onClear = { events += "clear" },
+            onExport = { events += "export" },
+            onCancel = { events += "cancel" },
+            onDismissSummary = { events += "dismiss" },
+            onDismissRejections = { events += "dismissRejections" },
+            onOpenSettings = onOpenSettings,
+        )
+    }
+
+    /** The start screen and Settings & help as the app switches between them (add-help-and-legal D1, task 3.4). */
+    private fun setApp() {
+        rule.setContent {
+            DiveLensTheme {
+                AppScreens(
+                    settingsHelp = { back -> SettingsHelpScreen("1.0", HelpActions({ true }, { true }, {}), onBack = back) },
+                ) { openSettings -> startScreen(openSettings) }
             }
         }
     }
@@ -86,6 +106,31 @@ class ImportExportScreenTest {
         rule.onNodeWithText("OK").performClick()
 
         assertEquals(listOf("select", "export", "cancel", "dismiss"), events)
+    }
+
+    @Test fun settingsOpenFromTheTopBarAndBackReturnsWithTheSetUnchanged() {
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos))
+        setApp()
+        rule.onNodeWithTag("open_settings").performClick()
+        rule.onNodeWithTag("settings_help").assertIsDisplayed()
+        pressBack()
+        rule.onNodeWithTag("photo_grid").assertIsDisplayed()
+        rule.onNodeWithText("Export 3 items").assertIsDisplayed()
+        assertEquals(emptyList<String>(), events) // back left Settings & help without clearing the set
+    }
+
+    @Test fun settingsOpenDuringAnExportAndTheProgressIsStillShownAfter() {
+        state = ImportExportUiState(
+            workingSet = WorkingSet().add(photos).withStatus(photos[0].source, ItemStatus.Exporting),
+            batch = BatchUi.Running(done = 0, total = 3),
+        )
+        setApp()
+        rule.onNodeWithTag("open_settings").assertIsDisplayed().performClick()
+        rule.onNodeWithTag("settings_help").assertIsDisplayed()
+        state = state.copy(batch = BatchUi.Running(done = 1, total = 3)) // the export moves on meanwhile
+        pressBack()
+        rule.onNodeWithText("Exporting 2 of 3").assertIsDisplayed()
+        assertEquals(emptyList<String>(), events) // no cancel
     }
 
     @Test fun backOnStartScreenIsLeftToTheSystem() {

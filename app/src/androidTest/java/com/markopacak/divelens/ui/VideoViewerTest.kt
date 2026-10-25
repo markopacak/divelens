@@ -3,14 +3,21 @@ package com.markopacak.divelens.ui
 import android.graphics.Bitmap
 import android.graphics.Rect
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -18,6 +25,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import com.markopacak.divelens.TestMedia
 import com.markopacak.divelens.analysis.CorrectionParams
 import com.markopacak.divelens.analysis.CorrectionTimeline
@@ -28,6 +36,10 @@ import com.markopacak.divelens.correction.ViewerRenderer
 import com.markopacak.divelens.importer.MediaImporter
 import com.markopacak.divelens.media.MediaItem
 import com.markopacak.divelens.media.WorkingSet
+import com.markopacak.divelens.ui.help.HelpPrefs
+import com.markopacak.divelens.ui.help.TIP_DELAY_MILLIS
+import com.markopacak.divelens.ui.help.Tip
+import com.markopacak.divelens.ui.help.ViewerGuidance
 import com.markopacak.divelens.ui.theme.DiveLensTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -46,6 +58,11 @@ class VideoViewerTest {
     private val photo = MediaItem.Photo("content://test/photo", "IMG_1.jpg", "image/jpeg", 400, 300)
     private val playback = mutableListOf<Pair<String?, Long>>()
     private var strengths by mutableStateOf(emptyMap<String, Float>())
+    private val stored = mutableMapOf<String, Boolean>()
+    private val help = HelpPrefs(object : HelpPrefs.Flags {
+        override fun get(key: String) = stored[key] ?: false
+        override fun set(key: String, value: Boolean) { stored[key] = value }
+    })
 
     private val renderer = ViewerRenderer {
         object : ViewerPhoto {
@@ -79,6 +96,7 @@ class VideoViewerTest {
                     onClose = {},
                     strengths = StrengthControls(strengths, V1Model.DEFAULT_STRENGTH, { s, v -> strengths = strengths + (s to v) }, {}),
                     videos = support,
+                    guidance = ViewerGuidance(help.pending.collectAsState().value, help::done),
                 )
             }
         }
@@ -169,5 +187,48 @@ class VideoViewerTest {
         rule.onNodeWithTag("viewer").performTouchInput { swipeLeft() }
         rule.waitUntil(5_000) { VideoPlayers.live.get() == 0 }
         rule.waitUntil(3_000) { playback.lastOrNull()?.first == null }
+    }
+
+    // The video's one-time tip and the gesture sheet (add-help-and-legal D6, D7; tasks 4.3, 4.4).
+
+    @Test fun holdTipShowsWhilePlayingAndGoesAwayForGood() {
+        waitForState("playing")
+        rule.waitUntil(3_000) { rule.onAllNodesWithTag("tip").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Hold to see the original").assertIsDisplayed()
+        assertTrue(state().endsWith("playing")) // the video plays on behind the tip
+        page().performTouchInput { down(center) }
+        waitForState("original, playing")
+        page().performTouchInput { up() }
+        waitForState("corrected, playing")
+        rule.waitUntil(3_000) { rule.onAllNodesWithTag("tip").fetchSemanticsNodes().isEmpty() }
+        assertEquals(setOf(Tip.PhotoHold, Tip.PhotoZoom), help.pending.value)
+        // Swipe to the photo and back: the video tip does not come back.
+        rule.onNodeWithTag("viewer").performTouchInput { swipeLeft() }
+        rule.onNodeWithTag("viewer").performTouchInput { swipeRight() }
+        waitForState("playing")
+        Thread.sleep(TIP_DELAY_MILLIS + 600)
+        rule.onAllNodesWithText("Hold to see the original").assertCountEquals(0)
+    }
+
+    @Test fun gestureSheetKeepsAPausedVideoWhereItWas() {
+        waitForState("playing")
+        rule.onNodeWithTag("play_pause").performClick()
+        waitForState("paused")
+        val before = position()
+        rule.onNodeWithTag("gesture_help").performClick()
+        rule.onNodeWithText("Hold: see the original video, while it keeps playing").assertIsDisplayed()
+        rule.onNodeWithText("Time bar: drag to move through the clip").assertIsDisplayed()
+        // Swipe the sheet away (adb-style key injection is blocked on the test phone).
+        rule.onNodeWithTag("gesture_sheet").performTouchInput { swipeDown() }
+        rule.waitUntil(3_000) { rule.onAllNodesWithTag("gesture_sheet").fetchSemanticsNodes().isEmpty() }
+        assertTrue(state().endsWith("paused"))
+        assertEquals(before, position())
+    }
+
+    @Test fun gestureHelpStaysClearOfThePlaybackBar() {
+        waitForState("playing")
+        val button = rule.onNodeWithTag("gesture_help").fetchSemanticsNode().boundsInRoot
+        val bar = rule.onNodeWithTag("playback_bar").fetchSemanticsNode().boundsInRoot
+        assertTrue("button $button overlaps bar $bar", button.bottom <= bar.top)
     }
 }

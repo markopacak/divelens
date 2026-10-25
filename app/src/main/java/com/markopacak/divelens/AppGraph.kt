@@ -18,6 +18,7 @@ import com.markopacak.divelens.export.MediaStorePhotoWriter
 import com.markopacak.divelens.export.MediaStoreVideoWriter
 import com.markopacak.divelens.importer.MediaImporter
 import com.markopacak.divelens.ui.WorkingSession
+import com.markopacak.divelens.ui.help.HelpPrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,6 +44,9 @@ class AppGraph(context: Context) {
 
     val controller = ExportController(BatchExporter { exportItem(it) }, scope)
 
+    /** The one-time gesture tips already shown (add-help-and-legal D6). */
+    val help = HelpPrefs.of(app.getSharedPreferences(PREFS, Context.MODE_PRIVATE))
+
     val session = WorkingSession(scope, MediaImporter(resolver)::import, controller, store, GpuViewerRenderer(resolver, store::correction))
 
     init {
@@ -50,5 +54,10 @@ class AppGraph(context: Context) {
         scope.launch { controller.progress.collect { if (it is ExportProgress.Running && it.done == 0) ExportService.start(app) } }
         // Exports left pending by a process that died mid-export.
         scope.launch(Dispatchers.IO) { PendingRows.removeStale(resolver, Branding.EXPORT_ALBUM) }
+    }
+
+    companion object {
+        /** The app's one preferences file. */
+        const val PREFS = "divelens"
     }
 }

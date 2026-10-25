@@ -19,14 +19,60 @@ program grant you additional permission to convey the resulting work.
 
 Third-party components
 
-This program includes the following components under their own licenses:
+This program includes the following components under their own licenses. The
+"Maven groups" line of each entry names the library groups it covers; the build
+checks that every library the app ships is covered by one of them.
 
 - Telephoto (zoomable), Copyright Saket Narayan,
-  https://github.com/saket/telephoto, Apache License, Version 2.0
-  (https://www.apache.org/licenses/LICENSE-2.0). Used for zoom and pan gestures
-  in the photo viewer.
+  https://github.com/saket/telephoto, Apache License, Version 2.0. Used for zoom
+  and pan gestures in the photo viewer.
+  Maven groups: me.saket.telephoto
 
-- AndroidX Media3 (transformer, effect, exoplayer and their dependencies),
-  Copyright The Android Open Source Project, https://github.com/androidx/media,
-  Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
-  Used to decode, play, correct and re-encode videos.
+- AndroidX libraries, including Jetpack Compose (UI, foundation, animation,
+  Material 3), Activity, Core, Lifecycle, ExifInterface and Media3 (transformer,
+  effect, ExoPlayer), Copyright The Android Open Source Project,
+  https://developer.android.com/jetpack/androidx, Apache License, Version 2.0.
+  Media3 decodes, plays, corrects and re-encodes videos.
+  Maven groups: androidx.*
+
+- Kotlin standard library, kotlinx.coroutines, JetBrains annotations and the
+  JetBrains Compose and lifecycle runtime libraries, Copyright JetBrains s.r.o.
+  and contributors, https://github.com/JetBrains, Apache License, Version 2.0.
+  Maven groups: org.jetbrains, org.jetbrains.*
+
+- Coil 3 (image loading), Copyright Coil Contributors,
+  https://github.com/coil-kt/coil, Apache License, Version 2.0.
+  Maven groups: io.coil-kt.*
+
+- Okio, Copyright Square, Inc., https://github.com/square/okio,
+  Apache License, Version 2.0.
+  Maven groups: com.squareup.okio
+
+- Guava and its annotations (failureaccess, listenablefuture, Error Prone
+  annotations, J2ObjC annotations, JSR-305 annotations), Copyright The Guava
+  Authors and Google LLC, https://github.com/google/guava,
+  Apache License, Version 2.0.
+  Maven groups: com.google.guava, com.google.errorprone, com.google.j2objc, com.google.code.findbugs
+
+- Accompanist, Copyright The Android Open Source Project,
+  https://github.com/google/accompanist, Apache License, Version 2.0.
+  Maven groups: com.google.accompanist
+
+- JSpecify annotations, Copyright The JSpecify Authors,
+  https://jspecify.dev, Apache License, Version 2.0.
+  Maven groups: org.jspecify
+
+- Poko annotations, Copyright Drew Hamilton,
+  https://github.com/drewhamilton/Poko, Apache License, Version 2.0.
+  Maven groups: dev.drewhamilton.poko
+
+- Checker Framework qualifiers (checker-qual), Copyright the Checker Framework
+  developers, https://checkerframework.org, MIT License.
+  Maven groups: org.checkerframework
+
+- Material Icons path data (settings, help, arrow back, expand, touch), Copyright
+  Google LLC, https://github.com/google/material-design-icons,
+  Apache License, Version 2.0. Drawn as vector icons in the help screens.
+
+The Apache License, Version 2.0 is at https://www.apache.org/licenses/LICENSE-2.0
+and the MIT License at https://opensource.org/license/mit.

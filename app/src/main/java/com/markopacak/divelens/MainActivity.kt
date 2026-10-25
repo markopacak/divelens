@@ -14,14 +14,19 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.markopacak.divelens.ui.AppScreens
 import com.markopacak.divelens.ui.ImportExportScreen
 import com.markopacak.divelens.ui.ImportExportViewModel
 import com.markopacak.divelens.ui.StrengthControls
+import com.markopacak.divelens.ui.help.HelpIntents
+import com.markopacak.divelens.ui.help.SettingsHelpScreen
+import com.markopacak.divelens.ui.help.ViewerGuidance
 import com.markopacak.divelens.ui.theme.DiveLensTheme
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -31,7 +36,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             DiveLensTheme {
-                val vm: ImportExportViewModel = viewModel(factory = viewModelFactory { initializer { ImportExportViewModel((application as DiveLensApp).graph.session) } })
+                val graph = (application as DiveLensApp).graph
+                val vm: ImportExportViewModel = viewModel(factory = viewModelFactory { initializer { ImportExportViewModel(graph.session) } })
                 val state by vm.state.collectAsStateWithLifecycle()
                 val previews by vm.previews.collectAsStateWithLifecycle()
                 val strengths by vm.strengths.collectAsStateWithLifecycle()
@@ -41,23 +47,33 @@ class MainActivity : ComponentActivity() {
                 val picker = rememberLauncherForActivityResult(contract) { vm.onPicked(it) }
                 // The notification permission is asked once, at the first export; the export runs whatever the answer.
                 val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.export() }
-                ImportExportScreen(
-                    state = state,
-                    previews = previews,
-                    onSelectPhotos = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
-                    onRemove = vm::remove,
-                    onClear = vm::clear,
-                    onExport = { if (askForNotifications()) notifications.launch(Manifest.permission.POST_NOTIFICATIONS) else vm.export() },
-                    onCancel = vm::cancel,
-                    onDismissSummary = vm::dismissSummary,
-                    onDismissRejections = vm::dismissRejections,
-                    viewer = viewer,
-                    onOpen = vm::openViewer,
-                    onCloseViewer = vm::closeViewer,
-                    onViewerPage = vm::onViewerPage,
-                    strengths = if (vm.adjustable) StrengthControls(strengths, vm.defaultStrength, vm::setStrength, vm::applyStrengthToAll) else null,
-                    videos = vm.videos,
-                )
+                val context = LocalContext.current
+                val version = remember { HelpIntents.appVersion(context) }
+                val pendingTips by graph.help.pending.collectAsStateWithLifecycle()
+                val helpActions = remember(context) { HelpIntents.actions(context, version, graph.help::resetTips) }
+                AppScreens(
+                    settingsHelp = { back -> SettingsHelpScreen(appVersion = version, actions = helpActions, onBack = back) },
+                ) { openSettings ->
+                    ImportExportScreen(
+                        state = state,
+                        previews = previews,
+                        onSelectPhotos = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+                        onRemove = vm::remove,
+                        onClear = vm::clear,
+                        onExport = { if (askForNotifications()) notifications.launch(Manifest.permission.POST_NOTIFICATIONS) else vm.export() },
+                        onCancel = vm::cancel,
+                        onDismissSummary = vm::dismissSummary,
+                        onDismissRejections = vm::dismissRejections,
+                        viewer = viewer,
+                        onOpen = vm::openViewer,
+                        onCloseViewer = vm::closeViewer,
+                        onViewerPage = vm::onViewerPage,
+                        strengths = if (vm.adjustable) StrengthControls(strengths, vm.defaultStrength, vm::setStrength, vm::applyStrengthToAll) else null,
+                        videos = vm.videos,
+                        onOpenSettings = openSettings,
+                        guidance = ViewerGuidance(pendingTips, graph.help::done),
+                    )
+                }
             }
         }
     }
@@ -66,7 +82,7 @@ class MainActivity : ComponentActivity() {
     private fun askForNotifications(): Boolean {
         if (Build.VERSION.SDK_INT < 33) return false
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return false
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val prefs = getSharedPreferences(AppGraph.PREFS, MODE_PRIVATE)
         if (prefs.getBoolean(ASKED_NOTIFICATIONS, false)) return false
         prefs.edit().putBoolean(ASKED_NOTIFICATIONS, true).apply()
         return true
@@ -84,7 +100,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private companion object {
-        const val PREFS = "divelens"
         const val ASKED_NOTIFICATIONS = "asked_notifications"
     }
 }

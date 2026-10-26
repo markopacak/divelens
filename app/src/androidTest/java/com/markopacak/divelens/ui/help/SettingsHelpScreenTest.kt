@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import com.markopacak.divelens.ui.PAGE_SLIDE_MILLIS
 import com.markopacak.divelens.ui.theme.DiveLensTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -116,6 +117,37 @@ class SettingsHelpScreenTest {
             rule.onNodeWithTag("settings_help").assertIsDisplayed()
         }
         assertEquals(emptyList<String>(), events) // back closed the pages, not the screen
+    }
+
+    private fun shown(tag: String) = rule.onAllNodesWithTag(tag).fetchSemanticsNodes().size
+
+    @Test fun legalPageSlidesInAndOut() {
+        setScreen()
+        scrollTo("Privacy policy")
+        rule.mainClock.autoAdvance = false
+        rule.onNodeWithText("Privacy policy").performClick()
+        rule.mainClock.advanceTimeBy(100)
+        assertEquals(1, shown("settings_help"))
+        assertEquals(1, shown("legal_page"))
+        rule.mainClock.advanceTimeBy(PAGE_SLIDE_MILLIS + 100L)
+        assertEquals(0, shown("settings_help"))
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.mainClock.advanceTimeBy(100)
+        assertEquals(1, shown("settings_help"))
+        assertEquals(1, shown("legal_page"))
+        rule.mainClock.advanceTimeBy(PAGE_SLIDE_MILLIS + 100L)
+        assertEquals(0, shown("legal_page"))
+    }
+
+    @Test fun theListComesBackWhereItWasScrolled() {
+        setScreen()
+        scrollTo("Privacy policy")
+        rule.onNodeWithText("Privacy policy").performClick()
+        rule.onNodeWithTag("legal_page").assertIsDisplayed()
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        // No scrolling: the About entries are still on screen.
+        rule.onNodeWithText("Privacy policy").assertIsDisplayed()
+        rule.onNodeWithText("Terms of use").assertIsDisplayed()
     }
 
     @Test fun noticesIncludeTheFullLicence() {

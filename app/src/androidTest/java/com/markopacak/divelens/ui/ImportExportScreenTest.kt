@@ -16,6 +16,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import com.markopacak.divelens.analysis.CorrectionParams
 import com.markopacak.divelens.correction.PreviewEntry
 import com.markopacak.divelens.media.FailureReason
@@ -117,6 +120,43 @@ class ImportExportScreenTest {
         rule.onNodeWithTag("photo_grid").assertIsDisplayed()
         rule.onNodeWithText("Export 3 items").assertIsDisplayed()
         assertEquals(emptyList<String>(), events) // back left Settings & help without clearing the set
+    }
+
+    private fun shown(tag: String) = rule.onAllNodesWithTag(tag).fetchSemanticsNodes().size
+
+    /** With the test clock paused: mid-slide both screens are composed, after the slide only [to]. */
+    private fun assertSlides(from: String, to: String, go: () -> Unit) {
+        go()
+        rule.mainClock.advanceTimeBy(100)
+        assertEquals("mid-slide $from", 1, shown(from))
+        assertEquals("mid-slide $to", 1, shown(to))
+        rule.mainClock.advanceTimeBy(PAGE_SLIDE_MILLIS + 100L)
+        assertEquals("after the slide $from", 0, shown(from))
+        assertEquals("after the slide $to", 1, shown(to))
+    }
+
+    @Test fun settingsSlideInAndOutWithTheArrowAndTheSystemBack() {
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos))
+        setApp()
+        rule.mainClock.autoAdvance = false
+        assertSlides("photo_grid", "settings_help") { rule.onNodeWithTag("open_settings").performClick() }
+        assertSlides("settings_help", "photo_grid") { rule.onNodeWithContentDescription("Back").performClick() }
+        assertSlides("photo_grid", "settings_help") { rule.onNodeWithTag("open_settings").performClick() }
+        assertSlides("settings_help", "photo_grid") { pressBack() }
+        assertEquals(emptyList<String>(), events)
+    }
+
+    @Test fun theGridKeepsItsScrollPositionAcrossSettings() {
+        val many = (1..WorkingSet.LIMIT).map { MediaItem.Photo("content://test/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
+        state = ImportExportUiState(workingSet = WorkingSet().add(many))
+        setApp()
+        rule.onNodeWithTag("photo_grid").performScrollToIndex(many.lastIndex)
+        rule.onAllNodesWithContentDescription("IMG_1.jpg").assertCountEquals(0) // scrolled past the first row
+        rule.onNodeWithTag("open_settings").performClick()
+        rule.onNodeWithTag("settings_help").assertIsDisplayed()
+        pressBack()
+        rule.onNodeWithContentDescription("IMG_${many.size}.jpg").assertIsDisplayed()
+        rule.onAllNodesWithContentDescription("IMG_1.jpg").assertCountEquals(0)
     }
 
     @Test fun settingsOpenDuringAnExportAndTheProgressIsStillShownAfter() {

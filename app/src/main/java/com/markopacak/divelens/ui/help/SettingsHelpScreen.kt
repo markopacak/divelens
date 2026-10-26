@@ -2,6 +2,7 @@ package com.markopacak.divelens.ui.help
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.markopacak.divelens.R
+import com.markopacak.divelens.ui.pageSlide
 import kotlinx.coroutines.launch
 
 /** The legal texts the About section opens (add-help-and-legal D4); the build copies them from the repository. */
@@ -79,7 +82,7 @@ private enum class Topic(@StringRes val title: Int, @StringRes val text: Int) {
 
 /**
  * Settings & help (add-help-and-legal D2): Settings (only when [settings] is given), Support DiveLens, foldable Help
- * and About. The legal texts open as full-screen pages; back closes them, then the screen.
+ * and About. The legal texts open as full-screen pages that slide in; back closes them, then the screen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,11 +96,44 @@ fun SettingsHelpScreen(
     var doc by rememberSaveable { mutableStateOf<LegalDoc?>(null) }
     // The address shown when no app can open it.
     var unopened by rememberSaveable { mutableStateOf<String?>(null) }
-    val shown = doc
-    if (shown != null) {
-        LegalPage(shown, readText, onBack = { doc = null })
-        return
+    // The list keeps its scroll position and unfolded topics while a legal page is open (add-screen-transitions D2).
+    val saved = rememberSaveableStateHolder()
+    AnimatedContent(targetState = doc, transitionSpec = { pageSlide(forward = targetState != null) }, label = "legal") { shown ->
+        if (shown != null) {
+            LegalPage(shown, readText, onBack = { doc = null })
+        } else {
+            saved.SaveableStateProvider("list") {
+                HelpList(appVersion, actions, onBack, settings, onOpen = { doc = it }, onUnopened = { unopened = it })
+            }
+        }
     }
+    unopened?.let { address ->
+        AlertDialog(
+            onDismissRequest = { unopened = null },
+            title = { Text(stringResource(R.string.no_app_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.no_app_message))
+                    SelectionContainer {
+                        Text(address, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp).testTag("unopened_address"))
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { unopened = null }) { Text(stringResource(R.string.ok)) } },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HelpList(
+    appVersion: String,
+    actions: HelpActions,
+    onBack: () -> Unit,
+    settings: (@Composable () -> Unit)?,
+    onOpen: (LegalDoc) -> Unit,
+    onUnopened: (String) -> Unit,
+) {
     BackHandler(onBack = onBack)
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -114,12 +150,12 @@ fun SettingsHelpScreen(
             section(R.string.section_support)
             item {
                 Entry(stringResource(R.string.send_feedback), stringResource(R.string.send_feedback_detail)) {
-                    if (!actions.sendFeedback()) unopened = Links.FEEDBACK_EMAIL
+                    if (!actions.sendFeedback()) onUnopened(Links.FEEDBACK_EMAIL)
                 }
             }
             item {
                 Entry(stringResource(R.string.report_bug), stringResource(R.string.report_bug_detail)) {
-                    if (!actions.openUrl(Links.ISSUES)) unopened = Links.ISSUES
+                    if (!actions.openUrl(Links.ISSUES)) onUnopened(Links.ISSUES)
                 }
             }
             section(R.string.section_help)
@@ -141,27 +177,12 @@ fun SettingsHelpScreen(
             }
             item {
                 Entry(stringResource(R.string.source_code), Links.REPOSITORY) {
-                    if (!actions.openUrl(Links.REPOSITORY)) unopened = Links.REPOSITORY
+                    if (!actions.openUrl(Links.REPOSITORY)) onUnopened(Links.REPOSITORY)
                 }
             }
-            items(LegalDoc.entries) { legal -> Entry(stringResource(legal.title)) { doc = legal } }
+            items(LegalDoc.entries) { legal -> Entry(stringResource(legal.title)) { onOpen(legal) } }
             item { Spacer(Modifier.navigationBarsPadding().padding(bottom = 16.dp)) }
         }
-    }
-    unopened?.let { address ->
-        AlertDialog(
-            onDismissRequest = { unopened = null },
-            title = { Text(stringResource(R.string.no_app_title)) },
-            text = {
-                Column {
-                    Text(stringResource(R.string.no_app_message))
-                    SelectionContainer {
-                        Text(address, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp).testTag("unopened_address"))
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { unopened = null }) { Text(stringResource(R.string.ok)) } },
-        )
     }
 }
 

@@ -2,6 +2,13 @@ package com.markopacak.divelens.ui
 
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -185,9 +192,27 @@ fun ImportExportScreen(
         )
     }
     val viewing = state.viewing
-    if (viewer != null && viewing != null && viewing in items.indices) {
+    val open = viewer != null && viewing != null && viewing in items.indices
+    // The item shown last, so the viewer can close with a transition while `viewing` is already null; when that item
+    // has left the working set, the viewer disappears at once (add-screen-transitions D3).
+    val last = remember { object { var source: String? = null } }
+    if (open) last.source = items[viewing!!].item.source
+    val shownIndex = if (open) viewing!! else items.indexOfFirst { it.item.source == last.source }
+    if (viewer != null && shownIndex >= 0) {
         // Over the grid, so the grid keeps its scroll position; its Back handler is composed earlier and yields to this one.
-        ViewerScreen(items, viewing, viewer, onViewerPage, onCloseViewer, strengths, videos, guidance)
+        AnimatedVisibility(
+            visible = open,
+            enter = fadeIn(tween(VIEWER_TRANSITION_MILLIS)) + scaleIn(tween(VIEWER_TRANSITION_MILLIS), initialScale = VIEWER_TRANSITION_SCALE),
+            exit = fadeOut(tween(VIEWER_TRANSITION_MILLIS)) + scaleOut(tween(VIEWER_TRANSITION_MILLIS), targetScale = VIEWER_TRANSITION_SCALE),
+            label = "viewer",
+        ) {
+            val closing = transition.targetState != EnterExitState.Visible
+            ViewerScreen(
+                items, shownIndex, viewer, onViewerPage, onCloseViewer, strengths, videos, guidance,
+                transitioning = transition.currentState != transition.targetState,
+                closing = closing,
+            )
+        }
     }
     (state.batch as? BatchUi.Finished)?.let { SummaryDialog(it, onDismissSummary) }
     if ((state.rejections.isNotEmpty() || state.leftOut > 0) && state.batch !is BatchUi.Finished) {

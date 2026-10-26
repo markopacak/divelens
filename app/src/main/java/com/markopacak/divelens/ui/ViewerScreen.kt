@@ -113,6 +113,10 @@ class StrengthControls(
     fun of(source: String): Float = values[source] ?: default
 }
 
+/** How long the viewer fades and scales in and out, and from which scale (add-screen-transitions D3). */
+const val VIEWER_TRANSITION_MILLIS = 250
+const val VIEWER_TRANSITION_SCALE = 0.92f
+
 /** How long the "applied to all" message stays. */
 private const val MESSAGE_MILLIS = 3000L
 
@@ -120,7 +124,7 @@ private val AUTO_LABEL_WIDTH = 48.dp
 
 /**
  * Full-screen viewer over the working set (spec "Full-screen viewer", design D4): swipe between photos and videos,
- * zoom photos up to 100% with corrected tiles, press and hold to see the original. Back closes it. With [strengths],
+ * zoom photos up to 100% with corrected tiles, press and hold to see the original. Back, or the panel's Back button, closes it. With [strengths],
  * a panel adjusts the strength of the item shown (add-strength-slider D4). With [videos], videos play corrected
  * ([VideoPage]). With [guidance], one-time gesture tips appear; a (?) button explains the gestures (add-help-and-legal).
  */
@@ -134,8 +138,11 @@ fun ViewerScreen(
     strengths: StrengthControls? = null,
     videos: VideoSupport? = null,
     guidance: ViewerGuidance? = null,
+    transitioning: Boolean = false,
+    closing: Boolean = false,
 ) {
-    BackHandler(onBack = onClose)
+    // While closing, a second Back goes to the start screen (add-screen-transitions D4).
+    BackHandler(enabled = !closing, onBack = onClose)
     val pager = rememberPagerState(initialPage = initialIndex.coerceIn(0, max(0, items.size - 1))) { items.size }
     val pageChanged by rememberUpdatedState(onPageChanged)
     LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { pageChanged(it) } }
@@ -166,7 +173,9 @@ fun ViewerScreen(
             val video = item.item as? MediaItem.Video
             if (video != null && videos != null) {
                 // Only the settled current page plays, so at most one decoder runs (add-video-processing D10).
-                VideoPage(video, active = page == pager.settledPage, videos, strengths?.of(source) ?: V1Model.DEFAULT_STRENGTH, bottomInset = panelHeight)
+                // A SurfaceView doesn't follow the fade and scale, so videos show their thumbnail during a transition
+                // and the player starts once it ends (add-screen-transitions D4).
+                VideoPage(video, active = page == pager.settledPage && !transitioning, videos, strengths?.of(source) ?: V1Model.DEFAULT_STRENGTH, bottomInset = panelHeight)
             } else {
                 ViewerPage(item, renderer, strengths?.of(source), dragging && page == pager.currentPage)
             }
@@ -185,9 +194,12 @@ fun ViewerScreen(
                 onChange = { strengths.onChange(source, it) },
                 onDragging = { dragging = it },
                 onApplyToAll = strengths.onApplyToAll,
+                onBack = onClose,
                 modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { panelHeight = with(density) { it.height.toDp() } },
             )
         }
+        // While closing, touches are taken here so they reach neither the viewer nor the grid it is fading over.
+        if (closing) Box(Modifier.fillMaxSize().testTag("viewer_closing").pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } })
     }
 }
 
@@ -204,6 +216,7 @@ private fun AdjustmentPanel(
     onChange: (Float) -> Unit,
     onDragging: (Boolean) -> Unit,
     onApplyToAll: (Float) -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier,
 ) {
     var applied by remember { mutableStateOf<Pair<Int, Int>?>(null) } // percent, items
@@ -246,6 +259,11 @@ private fun AdjustmentPanel(
                 }
                 TextButton(onClick = { onApplyToAll(strength); applied = percent to photoCount }) {
                     Text(stringResource(R.string.apply_to_all))
+                }
+                Spacer(Modifier.weight(1f))
+                // Closes the viewer like the system Back (add-screen-transitions D5).
+                TextButton(onClick = onBack, modifier = Modifier.testTag("viewer_back")) {
+                    Text(stringResource(R.string.back))
                 }
             }
             applied?.let { (p, n) ->

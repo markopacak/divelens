@@ -58,6 +58,7 @@ class VideoViewerTest {
     private val photo = MediaItem.Photo("content://test/photo", "IMG_1.jpg", "image/jpeg", 400, 300)
     private val playback = mutableListOf<Pair<String?, Long>>()
     private var strengths by mutableStateOf(emptyMap<String, Float>())
+    private var screen by mutableStateOf(ImportExportUiState())
     private val stored = mutableMapOf<String, Boolean>()
     private val help = HelpPrefs(object : HelpPrefs.Flags {
         override fun get(key: String) = stored[key] ?: false
@@ -79,6 +80,7 @@ class VideoViewerTest {
     @Before fun setUp() {
         TestMedia.deleteAll()
         video = runBlocking { MediaImporter(TestMedia.resolver).import(listOf(TestMedia.longVideo())).accepted.single() as MediaItem.Video }
+        screen = ImportExportUiState(workingSet = WorkingSet().add(listOf(video, photo)), viewing = 0)
         val params = CorrectionParams(floatArrayOf(1f, 1.5f, -0.7f, -0.06f, 0f, 2f, 0f, -0.5f, 0f, 0f, 1.6f, -0.6f), V1Model.DEFAULT_STRENGTH)
         val timeline = MutableStateFlow(CorrectionTimeline(video.durationUs).withSample(0, params).completed())
         val support = VideoSupport(
@@ -88,12 +90,14 @@ class VideoViewerTest {
         )
         rule.setContent {
             DiveLensTheme {
-                ViewerScreen(
-                    items = WorkingSet().add(listOf(video, photo)).items,
-                    initialIndex = 0,
-                    renderer = renderer,
-                    onPageChanged = {},
-                    onClose = {},
+                // The start screen, so opening and closing run the viewer's transition (add-screen-transitions D3).
+                ImportExportScreen(
+                    state = screen,
+                    onSelectPhotos = {}, onRemove = {}, onClear = {}, onExport = {}, onCancel = {},
+                    onDismissSummary = {}, onDismissRejections = {},
+                    viewer = renderer,
+                    onOpen = { screen = screen.copy(viewing = it) },
+                    onCloseViewer = { screen = screen.copy(viewing = null) },
                     strengths = StrengthControls(strengths, V1Model.DEFAULT_STRENGTH, { s, v -> strengths = strengths + (s to v) }, {}),
                     videos = support,
                     guidance = ViewerGuidance(help.pending.collectAsState().value, help::done),
@@ -230,5 +234,43 @@ class VideoViewerTest {
         val button = rule.onNodeWithTag("gesture_help").fetchSemanticsNode().boundsInRoot
         val bar = rule.onNodeWithTag("playback_bar").fetchSemanticsNode().boundsInRoot
         assertTrue("button $button overlaps bar $bar", button.bottom <= bar.top)
+    }
+
+    private fun count(tag: String) = rule.onAllNodesWithTag(tag).fetchSemanticsNodes().size
+
+    @Test fun closingStopsPlaybackAtOnceAndShowsTheThumbnail() {
+        waitForState("playing")
+        assertEquals(1, VideoPlayers.live.get())
+        rule.mainClock.autoAdvance = false
+        rule.onNodeWithTag("viewer_back").performClick()
+        rule.mainClock.advanceTimeByFrame()
+        rule.mainClock.advanceTimeByFrame()
+        assertEquals("viewer still closing", 1, count("viewer"))
+        assertEquals("no video surface while closing", 0, count("video_surface"))
+        assertEquals(0, VideoPlayers.live.get())
+        rule.mainClock.advanceTimeBy(VIEWER_TRANSITION_MILLIS + 100L)
+        assertEquals(0, count("viewer"))
+    }
+
+    @Test fun openingStartsPlaybackOnceTheTransitionEnds() {
+        waitForState("playing")
+        rule.onNodeWithTag("viewer_back").performClick()
+        rule.waitUntil(3_000) { count("viewer") == 0 && VideoPlayers.live.get() == 0 }
+        rule.mainClock.autoAdvance = false
+        screen = screen.copy(viewing = 0)
+        rule.mainClock.advanceTimeBy(100)
+        assertEquals("viewer opening", 1, count("viewer"))
+        assertEquals("thumbnail, not the player, while opening", 0, count("video_surface"))
+        rule.mainClock.advanceTimeBy(VIEWER_TRANSITION_MILLIS + 100L)
+        assertEquals(1, count("video_surface"))
+        rule.mainClock.autoAdvance = true
+        waitForState("playing")
+    }
+
+    @Test fun backButtonSitsBelowThePlaybackBar() {
+        waitForState("playing")
+        val back = rule.onNodeWithTag("viewer_back").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val bar = rule.onNodeWithTag("playback_bar").fetchSemanticsNode().boundsInRoot
+        assertTrue("back $back below bar $bar", back.top >= bar.bottom - 1f)
     }
 }

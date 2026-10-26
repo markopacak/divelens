@@ -79,6 +79,7 @@ class ViewerScreenTest {
         override fun set(key: String, value: Boolean) { stored[key] = value }
     }
     private var help: HelpPrefs? = null
+    private var cleared = 0
 
     private fun setScreen() {
         rule.setContent {
@@ -88,7 +89,7 @@ class ViewerScreenTest {
                     guidance = tips,
                     strengths = controls(),
                     state = state,
-                    onSelectPhotos = {}, onRemove = {}, onClear = {}, onExport = {}, onCancel = {},
+                    onSelectPhotos = {}, onRemove = {}, onClear = { cleared++ }, onExport = {}, onCancel = {},
                     onDismissSummary = {}, onDismissRejections = {},
                     viewer = renderer,
                     onOpen = { state = state.copy(viewing = it) },
@@ -355,5 +356,69 @@ class ViewerScreenTest {
         val panel = rule.onNodeWithTag("adjustment_panel").fetchSemanticsNode().boundsInRoot
         assertTrue("button $button overlaps panel $panel", button.bottom <= panel.top)
         assertTrue("button is in the top half", button.bottom < rule.onRoot().fetchSemanticsNode().size.height / 2f)
+    }
+
+    private fun count(tag: String) = rule.onAllNodesWithTag(tag).fetchSemanticsNodes().size
+
+    @Test fun viewerFadesInAndOut() {
+        setScreen()
+        rule.mainClock.autoAdvance = false
+        rule.onNodeWithContentDescription("IMG_3.jpg").performClick()
+        rule.mainClock.advanceTimeBy(100)
+        assertEquals("viewer mid-opening", 1, count("viewer"))
+        assertEquals("grid under the viewer", 1, count("photo_grid"))
+        rule.mainClock.advanceTimeBy(VIEWER_TRANSITION_MILLIS + 100L)
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.mainClock.advanceTimeBy(100)
+        assertNull(state.viewing)
+        assertEquals("viewer mid-closing", 1, count("viewer"))
+        assertEquals("closing viewer ignores touches", 1, count("viewer_closing"))
+        rule.mainClock.advanceTimeBy(VIEWER_TRANSITION_MILLIS + 100L)
+        assertEquals("viewer after closing", 0, count("viewer"))
+        rule.onNodeWithContentDescription("IMG_3.jpg").assertIsDisplayed() // the grid, as it was
+    }
+
+    @Test fun removingTheShownItemClosesAtOnce() {
+        state = state.copy(viewing = 0)
+        setScreen()
+        page(1).assertIsDisplayed()
+        rule.mainClock.autoAdvance = false
+        state = state.copy(workingSet = state.workingSet.remove(photos[0].source), viewing = null)
+        rule.mainClock.advanceTimeByFrame()
+        rule.mainClock.advanceTimeByFrame()
+        assertEquals(0, count("viewer"))
+        rule.mainClock.autoAdvance = true
+        rule.onNodeWithTag("photo_grid").assertIsDisplayed()
+    }
+
+    @Test fun aSecondBackWhileClosingReachesTheStartScreen() {
+        state = state.copy(viewing = 0)
+        setScreen()
+        page(1).assertIsDisplayed()
+        rule.mainClock.autoAdvance = false
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.mainClock.advanceTimeBy(50)
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.mainClock.advanceTimeBy(VIEWER_TRANSITION_MILLIS + 100L)
+        assertEquals(1, cleared) // the start screen's Back, which clears the set
+    }
+
+    @Test fun backButtonClosesTheViewerAndKeepsTheStrength() {
+        strengths = mapOf(photos[0].source to 0.5f)
+        state = state.copy(viewing = 0)
+        setScreen()
+        page(1).assertIsDisplayed()
+        val back = rule.onNodeWithTag("viewer_back").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val reset = rule.onNodeWithText("Reset").fetchSemanticsNode().boundsInRoot
+        val all = rule.onNodeWithText("Apply to all").fetchSemanticsNode().boundsInRoot
+        val panel = rule.onNodeWithTag("adjustment_panel").fetchSemanticsNode().boundsInRoot
+        assertEquals("same row as Reset", reset.center.y, back.center.y, 2f)
+        assertTrue("right of Apply to all", back.left >= all.right)
+        assertTrue("inside the panel", back.right <= panel.right && back.bottom <= panel.bottom)
+        rule.onNodeWithTag("viewer_back").performClick()
+        rule.waitForIdle()
+        assertNull(state.viewing)
+        assertEquals(0, count("viewer"))
+        assertEquals(mapOf(photos[0].source to 0.5f), strengths)
     }
 }

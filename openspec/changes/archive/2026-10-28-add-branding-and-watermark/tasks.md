@@ -1,0 +1,61 @@
+# Tasks
+
+## 1. Brand folder and project config
+
+- [x] 1.1 Fix `docs/brand/BRAND.md`: the guaranteed safe zone is a circle of radius 33 (66 dp) around (54, 54); the launcher layers draw the symbol at 95 % so the dot's far edge is at 32.6; the SVGs stay as they are. Verify: the sentence reads that way, and `docs/brand/` contains no `.DS_Store` or other stray files (`git status` shows only the intended files).
+- [x] 1.2 Update `openspec/config.yaml`: the planned order lists `7 add-branding-and-watermark (branding)` and `8 add-trial-and-purchase (licensing)`; "No watermarking." in the trial decision becomes "The watermark is not tied to the trial: anyone, free or paid, can turn it off in Settings." Verify: `openspec validate --all` passes and the file shows the new lines.
+
+## 2. Icons and launch screen
+
+- [x] 2.1 Replace the launcher layers with vector drawables converted from `docs/brand/icon/` (D1): foreground with the 0.95 group scale around (54, 54), Deep Ocean background, new monochrome layer; point both `mipmap-anydpi` icons at them; delete the `mipmap-*dpi` webp files. Verify: a JVM test parses `ic_launcher_foreground.xml` and `ic_launcher_monochrome.xml` and checks that the ring and dot, after the group scale, lie within 33 units of (54, 54) and match the SVG geometry; `./gradlew :app:assembleDebug` and lint pass with no missing-icon warnings.
+- [x] 2.2 Replace `ic_notification_export.xml` with the white monochrome symbol, 24 dp, viewport cropped around the symbol (D1). Verify: the existing export notification tests pass; on the phone the status bar shows the ring and dot during an export (checked in 7.1). Done: the full instrumented suite passes on the Xiaomi 14T, including `ExportServiceTest` (2026-10-27); the status-bar look is checked in 7.1.
+- [x] 2.3 Add `values-v31/themes.xml` with `android:windowSplashScreenBackground` set to Deep Ocean, and the colour in `values/colors.xml`; remove the template colours (D2). Verify: build and lint pass; a cold start on the phone shows the icon on Deep Ocean (checked in 7.1).
+
+## 3. Colours
+
+- [x] 3.1 Put the `BRAND.md` palette in `ui/theme/Color.kt`, build the light and dark schemes in `Theme.kt` with every Material 3 role set explicitly, and remove dynamic colour (D3). Verify: a JVM test checks the WCAG contrast of every on-colour against its role in both schemes (at least 4.5:1, or 3:1 for `outline` on the surface) and that the schemes contain none of the baseline Material purples; all existing JVM and instrumented UI tests pass. Done: `BrandColorsTest` (3 tests) passes; the 12 Material 3 "fixed" roles are set too. All 133 app JVM tests and 132 instrumented tests pass (2026-10-27).
+
+## 4. Watermark drawing and placement
+
+- [x] 4.1 Add the Gradle task that copies `docs/brand/watermark/watermark_{light,dark}.svg` into the app's generated assets, like the legal texts (D4). Verify: the debug APK contains both files under `assets/` (`unzip -l`), and editing a source SVG changes the APK on the next build.
+- [x] 4.2 Write `MarkSvg`, the pure-Kotlin reader for the brand SVG subset (D4). Verify: JVM tests read the two real files and get the viewBox `-3 -3 232.5 63`, the expected number of shapes with their colours, opacities, even-odd flags and offsets; a file with a `<filter>`, `<text>`, gradient or unknown transform is rejected with an error naming the element.
+- [x] 4.3 Write `WatermarkPlacement` (D5): the box and measurement area in display coordinates, and the display→stored transform for EXIF orientations 1–8. Verify: JVM tests check a 4000 × 3000 photo gets a 480 px wide box 120 px from the right and bottom; a 3000 × 4000 portrait gets 360 px and 90 px (12 %, changed from 20 % after the maintainer saw real exports, 2026-10-27); and for each of the 8 orientations, the box's corners mapped to stored pixels land where the upright, unmirrored mark belongs.
+- [x] 4.4 Write the version choice (D6): Rec. 709 luma mean over the measurement area, with subsampling above 8 MP, and `WATERMARK_DARK_ABOVE = 0.60`. Verify: JVM tests on synthetic pixel arrays check flat corners at luma 0.38 → light, 0.75 → dark, the boundary value, and that subsampling changes the mean by less than 0.005 on a noisy test image.
+- [x] 4.5 Write the Android renderer: shapes → `PathParser` paths drawn through the viewBox→box matrix under a 92 % `saveLayerAlpha` (D4). Verify: an instrumented test renders the light mark 2400 px wide on a mid-grey bitmap and checks the bitmap's corners are untouched, a pixel inside the ring is white at 92 % over grey (within ±2 per channel), a pixel just beside the ring edge is antialiased (not blocky), and a pixel in the shadow offset is darker than the background. Done: `WatermarkRendererTest` (5 tests) passes on the phone. The edge check accepts any value strictly between the grey and the mark (an edge near a pixel boundary covers only a few per cent of the pixel) (2026-10-27).
+
+## 5. Watermark in exports
+
+- [x] 5.1 Add `ExportPrefs` with `watermark` (key `watermark_on_exports`, default on) on the `HelpPrefs` `Flags` abstraction, and pass the value read at batch start through `ExportController` as `ExportOptions` to the item use case and both writers (D8). Verify: JVM tests check the default is on, the value persists through a new `ExportPrefs` on the same flags, and changing it after the batch's first item leaves the remaining items of that batch with the original value.
+- [x] 5.2 Apply the watermark in `MediaStorePhotoWriter` after the `PhotoProcessor`, measuring the corrected bitmap and drawing through the orientation transform (D5, D6). Verify: instrumented tests export (a) a landscape photo and check dimensions are unchanged and the bottom-right box area differs from an export with the watermark off while the rest is identical; (b) an EXIF-rotated-90 portrait photo and check, after applying the orientation, the mark is in the displayed bottom-right corner; (c) a photo at strength 0 with the mark present; (d) a bright-corner photo uses the dark version; and the metadata fields of on/off exports match. Done: `WatermarkedPhotoExportTest` (5 tests) passes on the phone (2026-10-27).
+- [x] 5.3 Keep a corner crop per sample in `AndroidTimelineSampler` with the timeline, and choose the clip's version from the median corrected luma at export strength (D6). Verify: JVM tests with synthetic crops check the median ignores a short bright run and that strength changes the outcome when it moves the luma across the threshold; the existing timeline tests pass. Done: `CornerCropTest` (4) and the core `CorrectionTimelineTest` pass; `AndroidTimelineSamplerTest` passes on the phone. Each sample keeps its corner averaged into at most 24 × 8 cells (design D6) (2026-10-27).
+- [x] 5.4 Add the Media3 `OverlayEffect` after `CorrectionEffect` in `MediaStoreVideoWriter` (D7). Verify: instrumented tests export (a) a landscape test clip and check, on decoded first, middle and last frames, the mark in the bottom-right box with the same position in each and the resolution, frame rate and duration unchanged; (b) a portrait clip with rotation 90 and check the mark is upright in the displayed bottom-right corner (if not, apply the D5 fallback and record it in design.md); (c) watermark off, no mark. Done: `WatermarkedVideoExportTest` (3 tests) passes on the phone. Media3 does hand effects upright frames: the rotation-90 clip has the mark upright in the displayed corner (also checked by eye on a saved frame), so the D5 fallback is not needed. The upright check compares the change against the mark mirrored and turned 180°, and checks the dot is at the top, since the wordmark looks much the same upside down at 72 px (2026-10-27).
+- [x] 5.5 Set the watermark off in existing export tests that compare pixels to the source, unless they test the watermark. Verify: the full instrumented suite passes on the phone. Done: no existing test needed changing: the writers' one-argument `write` exports without the watermark, and no test goes through `AppGraph`. Full instrumented suite: 132 tests pass (2026-10-27).
+
+## 6. Setting, threshold and docs
+
+- [x] 6.1 Add the "Watermark on exports" switch with its summary as the `settings` content of `SettingsHelpScreen`, wired to `ExportPrefs` in `AppGraph` (D8, D10). Verify: `SettingsHelpScreenTest` checks the Settings section is first, the switch is on by default, tapping the row turns it off and the preference reads off; the existing "No empty settings section" test still covers the screen without settings. Done: `SettingsHelpScreenTest` (12 tests, 1 new) passes on the phone (2026-10-27).
+- [x] 6.2 Write `tools/brand/watermark_preview.py` with its `requirements.txt` (D9), and a JVM test that pins the tool's constants (placement, opacity, luma weights, subsampling, threshold) to the app's. Verify: the tool runs on a folder of corrected exports in `trainingset/watermark/` and writes a contact sheet sorted by corner luma, with both versions and the threshold shown; nothing is written outside `trainingset/`. Done: run on 4 synthetic photos in a scratch folder under `trainingset/` (deleted afterwards): lumas 0.21–0.87, the red line between 0.535 and 0.866, glyph counters drawn correctly; a folder outside `trainingset/` is refused (2026-10-27).
+- [x] 6.3 Tune the threshold with the user: they pull 20 or more corrected exports with varied corners into `trainingset/watermark/`, review the contact sheet and pick the value. Set `WATERMARK_DARK_ABOVE` and the value in `BRAND.md`. Verify: the chosen value and the number of photos reviewed are recorded in this task; the 4.4 tests use the constant and pass. Done (2026-10-27): the maintainer exported 2 photos and 2 videos at 12 % and judged them good. Measured corners: photos 0.39 (white mark) and 0.71 (navy); videos 0.32 (white) and a clip whose corner runs from 0.35 to 0.64 (median about 0.55, white for the whole clip, faint in its bright middle, as one version per clip implies). 0.60 is kept; the contact sheet was not needed. The tool stays for retuning if an export shows an unreadable mark.
+- [x] 6.4 Credit Inter (SIL OFL 1.1) in NOTICE (the NOTICE check already accepts an entry with no Maven groups, like the Material Icons one); update the README status (icon, palette, watermark on by default and removable). Verify: the NOTICE build check passes, and the README describes the watermark setting. Done: `checkNotice` and `LegalTextsTest` (the bundled NOTICE equals the repository file) pass (2026-10-27).
+
+## 7. Device check
+
+- [x] 7.1 On the Xiaomi 14T:
+  - **Icon:** check the home screen icon (and the round and themed icons, where the launcher offers them) shows the ring and dot complete.
+  - **Launch screen:** the cold start shows the icon on Deep Ocean.
+  - **Export notification:** the status bar shows the symbol.
+  - **Screens:** the start screen, viewer panel, sheets, dialogs and Settings & help in light and dark mode, with no purple left and all text readable.
+  - **Exports:** export a batch of photos (landscape, portrait, bright and dark corners) and a portrait and a landscape video, and check the mark in the gallery in each.
+  - **Setting:** turn it off and re-export.
+
+  Verify: results recorded in this task.
+
+  Done (2026-10-27), checked by the maintainer on the Xiaomi 14T (HyperOS 3, Android 16):
+  - **Icon, notification, screens:** the home-screen icon is complete, the export notification shows the symbol, and the screens in light and dark mode have no purple left and read well.
+  - **Exports:** 2 photos and 2 videos at 12 % look good; the mark is faint on a clip whose corner swings from dark to bright (see 6.3); turning the switch off gives exports without the mark.
+  - **Launch screen:** it was plain white at first: HyperOS draws the splash window from the window background. Fixed by making the window background the launch picture (design D2, updated). After the fix the icon shows on Deep Ocean, with no dark flash in page transitions. The 132 instrumented tests pass after the fix.
+
+## Workflow follow-up
+
+- Commit and push when asked; archive the change after review: create the `branding` main spec, and update `help-and-legal` and `video-processing`.
+- After archiving, update the memory note on the watermark (it is no longer a future idea).

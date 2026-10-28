@@ -150,4 +150,17 @@ class CorrectionTimelineTest {
         }
         assertTrue("worst difference $worst", worst <= 1e-5)
     }
+    @Test fun cornerPixelsStayWithTheirSamples() {
+        val t = CorrectionTimeline(us(4.0))
+            .withSample(us(2.0), params(2.0f), intArrayOf(2))
+            .withSample(us(0.0), params(1.0f), intArrayOf(0))
+            .withSample(us(1.0), params(1.0f))
+            .completed()
+        assertEquals(listOf(us(0.0), us(2.0)), t.corners.map { it.first })
+        assertEquals(listOf(0, 2), t.corners.map { it.second.single() })
+        // Replacing a sample replaces its corner, and the matrices are unaffected by corners.
+        val replaced = t.withSample(us(2.0), params(2.0f), intArrayOf(9))
+        assertEquals(9, replaced.corners.last().second.single())
+        assertEquals(t.matrixAt(us(1.5))!!.toList(), replaced.matrixAt(us(1.5))!!.toList())
+    }
 }

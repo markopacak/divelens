@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launch screen: the brand symbol on Deep Ocean (add-branding-and-watermark D2). It is the theme's window
+     background, which launchers such as HyperOS's draw as the starting window instead of the Android 12 splash
+     attributes, and which Android 10 and 11 always use. MainActivity replaces it once the app runs. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/ic_launcher_background" />
+    <item
+        android:width="240dp"
+        android:height="240dp"
+        android:drawable="@drawable/ic_launcher_foreground"
+        android:gravity="center" />
+</layer-list>

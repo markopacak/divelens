@@ -15,9 +15,9 @@ enum class Tip(val key: String) {
 
 /** Which tips are still to show. A tip marked done stays done across restarts until [resetTips]. */
 class HelpPrefs(private val flags: Flags) {
-    /** Where the "shown" flags are kept: SharedPreferences in the app, a map in tests. */
+    /** Where the flags are kept: SharedPreferences in the app, a map in tests. A missing flag reads as [default]. */
     interface Flags {
-        fun get(key: String): Boolean
+        fun get(key: String, default: Boolean = false): Boolean
         fun set(key: String, value: Boolean)
     }
 
@@ -36,9 +36,12 @@ class HelpPrefs(private val flags: Flags) {
     }
 
     companion object {
-        fun of(prefs: SharedPreferences) = HelpPrefs(object : Flags {
-            override fun get(key: String) = prefs.getBoolean(key, false)
+        fun of(prefs: SharedPreferences) = HelpPrefs(flags(prefs))
+
+        /** [Flags] kept in [prefs]. */
+        fun flags(prefs: SharedPreferences): Flags = object : Flags {
+            override fun get(key: String, default: Boolean) = prefs.getBoolean(key, default)
             override fun set(key: String, value: Boolean) = prefs.edit().putBoolean(key, value).apply()
-        })
+        }
     }
 }

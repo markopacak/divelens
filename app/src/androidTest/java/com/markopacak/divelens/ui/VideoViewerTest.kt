@@ -61,7 +61,7 @@ class VideoViewerTest {
     private var screen by mutableStateOf(ImportExportUiState())
     private val stored = mutableMapOf<String, Boolean>()
     private val help = HelpPrefs(object : HelpPrefs.Flags {
-        override fun get(key: String) = stored[key] ?: false
+        override fun get(key: String, default: Boolean) = stored[key] ?: default
         override fun set(key: String, value: Boolean) { stored[key] = value }
     })
 

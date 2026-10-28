@@ -154,11 +154,36 @@ abstract class CopyLegalTexts : DefaultTask() {
     }
 }
 
+/**
+ * Copies the watermark SVGs from docs/brand/ into generated assets (`brand/watermark_light.svg`, `watermark_dark.svg`),
+ * so exports draw exactly the brand files (add-branding-and-watermark D4).
+ */
+abstract class CopyBrandMarks : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val marks: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val brand = outputDir.get().dir("brand").asFile
+        brand.deleteRecursively()
+        brand.mkdirs()
+        marks.files.forEach { file -> file.copyTo(brand.resolve(file.name), overwrite = true) }
+    }
+}
+
 androidComponents {
     onVariants { variant ->
         val copy = tasks.register<CopyLegalTexts>("copy${variant.name.replaceFirstChar { it.uppercase() }}LegalTexts") {
             texts.from(rootProject.files("LICENSE", "NOTICE", "docs/PRIVACY.md", "docs/TERMS.md"))
         }
         variant.sources.res?.addGeneratedSourceDirectory(copy, CopyLegalTexts::outputDir)
+        val marks = tasks.register<CopyBrandMarks>("copy${variant.name.replaceFirstChar { it.uppercase() }}BrandMarks") {
+            marks.from(rootProject.files("docs/brand/watermark/watermark_light.svg", "docs/brand/watermark/watermark_dark.svg"))
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(marks, CopyBrandMarks::outputDir)
     }
 }

@@ -39,7 +39,7 @@ class PreviewStoreTimelineTest {
     private val sampler = TimelineSampler { source, targets ->
         log += "sample $source ${targets.first() / 1_000_000}-${targets.last() / 1_000_000}"
         gates["sample $source"]?.await()
-        targets.map { t -> t to params(t / 1_000_000f) }
+        targets.map { t -> TimelineSample(t, params(t / 1_000_000f)) }
     }
 
     private fun params(gain: Float) = CorrectionParams(floatArrayOf(1f, 0f, 0f, 0f, 0f, gain, 0f, 0f, 0f, 0f, 1f, 0f), 0.78f)
@@ -171,7 +171,7 @@ class PreviewStoreTimelineTest {
 
     @Test fun aFailedChunkDoesNotStallTheVideo() = runTest {
         var calls = 0
-        val flaky = TimelineSampler { _, targets -> if (calls++ == 0) error("decoder hiccup") else targets.map { it to params(1f) } }
+        val flaky = TimelineSampler { _, targets -> if (calls++ == 0) error("decoder hiccup") else targets.map { TimelineSample(it, params(1f)) } }
         val store = PhotoPreviewStore(preparer, backgroundScope, StandardTestDispatcher(testScheduler), sampler = flaky)
         store.setItems(listOf(video(1, 25)))
         runCurrent()

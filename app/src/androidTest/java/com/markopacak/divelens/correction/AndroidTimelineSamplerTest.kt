@@ -14,8 +14,8 @@ class AndroidTimelineSamplerTest {
     @Test fun samplesSyncFramesAndSeesTheColourDrift() = runBlocking {
         // The fixture has a sync frame every second (0 s, 1 s) and drifts from green-blue to deep blue.
         val samples = AndroidTimelineSampler(TestMedia.resolver).sample(TestMedia.driftVideo().toString(), listOf(0L, 400_000L, 1_000_000L, 2_000_000L))
-        assertEquals(listOf(0L, 1_000_000L), samples.map { it.first }.map { (it + 50_000) / 1_000_000 * 1_000_000 })
-        val (first, second) = samples.map { it.second }
+        assertEquals(listOf(0L, 1_000_000L), samples.map { it.timeUs }.map { (it + 50_000) / 1_000_000 * 1_000_000 })
+        val (first, second) = samples.map { it.params }
         // Deeper blue at 1 s: more red is rebuilt (larger alpha in the red row).
         assertTrue("alpha ${first[0, 1]} -> ${second[0, 1]}", second[0, 1] > first[0, 1])
     }

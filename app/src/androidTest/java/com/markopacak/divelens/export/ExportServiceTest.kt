@@ -30,7 +30,7 @@ class ExportServiceTest {
     private val scope = MainScope()
     private val items = (1..3).map { MediaItem.Photo("content://p/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
     private val gates = items.associate { it.source to CompletableDeferred<Unit>() }
-    private val controller = ExportController(BatchExporter { gates.getValue(it.source).await(); com.markopacak.divelens.export.ItemResult.Exported("out") }, scope)
+    private val controller = ExportController(BatchExporter { it, _ -> gates.getValue(it.source).await(); com.markopacak.divelens.export.ItemResult.Exported("out") }, scope)
 
     @Before fun setUp() {
         if (Build.VERSION.SDK_INT >= 33 && !notificationsAllowed) {

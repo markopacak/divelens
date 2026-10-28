@@ -48,7 +48,7 @@ class MediaStoreVideoWriterTest {
     /** The fixture's timeline as the app builds it: sync frames sampled every second, smoothed. */
     private suspend fun timeline(video: MediaItem.Video): CorrectionTimeline {
         val samples = AndroidTimelineSampler(resolver).sample(video.source, CorrectionTimeline.plannedSampleTimes(video.durationUs))
-        return samples.fold(CorrectionTimeline(video.durationUs)) { t, (time, p) -> t.withSample(time, p) }.completed()
+        return samples.fold(CorrectionTimeline(video.durationUs)) { t, (time, p, corner) -> t.withSample(time, p, corner) }.completed()
     }
 
     private fun writer(

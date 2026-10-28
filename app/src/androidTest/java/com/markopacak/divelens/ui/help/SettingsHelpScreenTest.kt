@@ -2,10 +2,14 @@ package com.markopacak.divelens.ui.help
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -16,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import com.markopacak.divelens.export.ExportPrefs
 import com.markopacak.divelens.ui.PAGE_SLIDE_MILLIS
 import com.markopacak.divelens.ui.theme.DiveLensTheme
 import org.junit.Assert.assertEquals
@@ -180,5 +185,32 @@ class SettingsHelpScreenTest {
         rule.onNodeWithText("OK").performClick()
         rule.onNodeWithText("Report a bug").performClick()
         rule.onNodeWithTag("unopened_address").assertTextEquals(Links.ISSUES)
+    }
+    @Test fun watermarkSwitchIsFirstAndOnUntilTurnedOff() {
+        val stored = mutableMapOf<String, Boolean>()
+        val prefs = ExportPrefs(object : HelpPrefs.Flags {
+            override fun get(key: String, default: Boolean) = stored[key] ?: default
+            override fun set(key: String, value: Boolean) { stored[key] = value }
+        })
+        rule.setContent {
+            DiveLensTheme {
+                SettingsHelpScreen(
+                    appVersion = "1.0",
+                    actions = HelpActions(sendFeedback = { true }, openUrl = { true }, showTipsAgain = {}),
+                    onBack = {},
+                    settings = {
+                        val on by prefs.watermark.collectAsState()
+                        WatermarkSetting(on = on, onChange = prefs::setWatermark)
+                    },
+                )
+            }
+        }
+        assertEquals("Settings", sections().first())
+        rule.onNodeWithText("Watermark on exports").assertIsDisplayed()
+        rule.onNodeWithTag("setting_watermark").assertIsOn()
+        rule.onNodeWithTag("setting_watermark").performClick()
+        rule.onNodeWithTag("setting_watermark").assertIsOff()
+        assertEquals(false, prefs.watermark.value)
+        assertEquals(false, stored[ExportPrefs.KEY_WATERMARK])
     }
 }

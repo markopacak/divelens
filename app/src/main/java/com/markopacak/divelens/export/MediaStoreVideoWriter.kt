@@ -10,6 +10,7 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.net.toUri
+import androidx.media3.common.Effect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.DefaultEncoderFactory
@@ -22,6 +23,8 @@ import androidx.media3.transformer.VideoEncoderSettings
 import com.markopacak.divelens.Branding
 import com.markopacak.divelens.analysis.CorrectionTimeline
 import com.markopacak.divelens.correction.CorrectionEffect
+import com.markopacak.divelens.watermark.CornerCrop
+import com.markopacak.divelens.watermark.VideoWatermark
 import com.markopacak.divelens.importer.AndroidCodecSupport
 import com.markopacak.divelens.importer.CodecSupport
 import com.markopacak.divelens.importer.VideoAcceptance
@@ -43,16 +46,18 @@ import kotlin.coroutines.coroutineContext
 import androidx.media3.common.MediaItem as Media3Item
 import androidx.media3.transformer.ExportException as Media3ExportException
 
-/** Writes one video to the gallery and returns the new item's URI string. */
+/** Writes one video to the gallery with the batch's [ExportOptions] and returns the new item's URI string. */
 fun interface VideoWriter {
-    suspend fun write(video: MediaItem.Video): String
+    suspend fun write(video: MediaItem.Video, options: ExportOptions): String
 }
 
 /**
  * Exports one video (add-video-processing D7): storage check, the clip's complete timeline, a pending `MediaStore.Video`
  * row in Pictures/<album> named from the creation time, then Transformer with the [CorrectionEffect] at the video's
  * strength, the original's codec (or H.264) and bitrate at the exact size, audio passed through, HDR tone-mapped to SDR,
- * muxed by [CleanMp4Muxer] straight into the row. On failure or cancellation the row is deleted.
+ * muxed by [CleanMp4Muxer] straight into the row. With the batch's watermark option, the [watermark] overlay follows the
+ * correction, in the version the clip's corners call for (add-branding-and-watermark D6, D7). On failure or cancellation
+ * the row is deleted.
  */
 @UnstableApi
 class MediaStoreVideoWriter(
@@ -66,10 +71,14 @@ class MediaStoreVideoWriter(
     private val whileEncoding: suspend () -> Unit = {},
     /** Test hook: runs after the file is written, before the export is published. */
     private val beforePublish: suspend () -> Unit = {},
+    private val watermark: VideoWatermark? = null,
 ) : VideoWriter {
     private val resolver: ContentResolver = context.contentResolver
 
-    override suspend fun write(video: MediaItem.Video): String {
+    /** Writes [video] without a watermark; for tests that compare exported frames with the source. */
+    suspend fun write(video: MediaItem.Video): String = write(video, ExportOptions.PLAIN)
+
+    override suspend fun write(video: MediaItem.Video, options: ExportOptions): String {
         val source = video.source.toUri()
         if (!VideoStorage.fits(availableBytes(), video.bitrate, video.durationUs, fileSize(source))) {
             throw ExportException(FailureReason.InsufficientStorage)
@@ -81,13 +90,16 @@ class MediaStoreVideoWriter(
         }
         val outputCodec = VideoAcceptance.outputCodec(video.toInfo(), codecs) ?: throw ExportException(FailureReason.UnreadableSource)
         val strength = strengthOf(video.source)
+        val overlay = if (options.watermark && watermark != null) {
+            watermark.effect(video.displayWidth, video.displayHeight, CornerCrop.versionFor(timeline, strength))
+        } else null
         var pending: Uri? = null
         try {
             val target = withContext(Dispatchers.IO) { insertPending(video) }.also { pending = it }
             val started = System.nanoTime()
             withContext(Dispatchers.IO) { resolver.openFileDescriptor(target, "rw") }?.use { pfd ->
                 FileOutputStream(pfd.fileDescriptor).use { out ->
-                    transform(video, timeline, strength, outputCodec, out)
+                    transform(video, timeline, strength, outputCodec, out, overlay)
                 }
             } ?: throw ExportException(FailureReason.WriteFailed)
             // Timing log for the device check (spec "Video responsiveness": at most twice the duration).
@@ -107,7 +119,7 @@ class MediaStoreVideoWriter(
     }
 
     /** Runs Transformer on the main looper and waits for it; cancelling the caller cancels the export. */
-    private suspend fun transform(video: MediaItem.Video, timeline: CorrectionTimeline, strength: Float, codec: String, out: FileOutputStream) {
+    private suspend fun transform(video: MediaItem.Video, timeline: CorrectionTimeline, strength: Float, codec: String, out: FileOutputStream, overlay: Effect?) {
         val scratch = File(context.cacheDir, "transformer-unused.mp4") // Transformer wants a path; the muxer ignores it.
         withContext(Dispatchers.Main) {
             val done = CompletableDeferred<Unit>()
@@ -132,7 +144,7 @@ class MediaStoreVideoWriter(
                 })
                 .build()
             val item = EditedMediaItem.Builder(Media3Item.fromUri(video.source))
-                .setEffects(Effects(emptyList(), listOf(CorrectionEffect.forExport(timeline, strength))))
+                .setEffects(Effects(emptyList(), listOfNotNull(CorrectionEffect.forExport(timeline, strength), overlay)))
                 .build()
             val composition = Composition.Builder(EditedMediaItemSequence.Builder(item).build())
                 .setTransmuxAudio(true)

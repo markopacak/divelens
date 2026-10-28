@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- The system launch screen shows the adaptive icon on Deep Ocean (add-branding-and-watermark D2). Launchers that
+         draw the window background instead get the same picture from it. -->
+    <style name="Theme.DiveLens" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="android:windowBackground">@drawable/launch_background</item>
+    </style>
+</resources>

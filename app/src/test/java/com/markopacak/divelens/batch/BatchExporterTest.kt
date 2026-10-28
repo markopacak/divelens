@@ -15,7 +15,7 @@ class BatchExporterTest {
     private val items = (1..5).map { MediaItem.Photo("content://p/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
 
     @Test fun progressRunsFromOneToN() = runTest {
-        val events = BatchExporter { ItemResult.Exported("out/${it.source}") }.run(items).toList()
+        val events = BatchExporter { it, _ -> ItemResult.Exported("out/${it.source}") }.run(items).toList()
         val finished = events.filterIsInstance<BatchEvent.Finished>()
         assertEquals((1..5).toList(), finished.map { it.done })
         assertEquals(List(5) { 5 }, finished.map { it.total })
@@ -23,12 +23,12 @@ class BatchExporterTest {
 
     @Test fun exportsOneAtATimeInOrder() = runTest {
         val log = mutableListOf<String>()
-        BatchExporter { log += "start ${it.source}"; log += "end ${it.source}"; ItemResult.Exported("") }.run(items).toList()
+        BatchExporter { it, _ -> log += "start ${it.source}"; log += "end ${it.source}"; ItemResult.Exported("") }.run(items).toList()
         assertEquals(items.flatMap { listOf("start ${it.source}", "end ${it.source}") }, log)
     }
 
     @Test fun oneFailureDoesNotStopTheBatch() = runTest {
-        val events = BatchExporter {
+        val events = BatchExporter { it, _ ->
             if (it.source.endsWith("/2")) ItemResult.Failed(FailureReason.UnreadableSource) else ItemResult.Exported("")
         }.run(items).toList()
         val results = events.filterIsInstance<BatchEvent.Finished>().map { it.result }
@@ -42,7 +42,7 @@ class BatchExporterTest {
         val started = mutableListOf<String>()
         val finished = mutableListOf<String>()
         val job = launch {
-            BatchExporter {
+            BatchExporter { it, _ ->
                 started += it.source
                 if (it.source.endsWith("/3")) third.await() else ItemResult.Exported("")
             }.run(items).collect { if (it is BatchEvent.Finished) finished += it.item.source }

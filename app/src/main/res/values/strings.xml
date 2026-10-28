@@ -71,6 +71,9 @@
     <string name="settings_help">Settings &amp; help</string>
     <string name="back">Back</string>
     <string name="section_settings">Settings</string>
+    <!-- add-branding-and-watermark -->
+    <string name="setting_watermark">Watermark on exports</string>
+    <string name="setting_watermark_summary">Adds a small diveLENS mark to the corner of exported photos and videos</string>
     <string name="section_support">Support DiveLens</string>
     <string name="section_help">Help</string>
     <string name="section_about">About</string>

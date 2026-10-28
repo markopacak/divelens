@@ -75,7 +75,7 @@ class ViewerScreenTest {
     /** The tip flags as SharedPreferences would keep them; a new [HelpPrefs] on them is like a restart. */
     private val stored = mutableMapOf<String, Boolean>()
     private val flags = object : HelpPrefs.Flags {
-        override fun get(key: String) = stored[key] ?: false
+        override fun get(key: String, default: Boolean) = stored[key] ?: default
         override fun set(key: String, value: Boolean) { stored[key] = value }
     }
     private var help: HelpPrefs? = null

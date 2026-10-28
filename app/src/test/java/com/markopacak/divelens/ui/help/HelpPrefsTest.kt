@@ -6,7 +6,7 @@ import org.junit.Test
 class HelpPrefsTest {
     private val stored = mutableMapOf<String, Boolean>()
     private val flags = object : HelpPrefs.Flags {
-        override fun get(key: String) = stored[key] ?: false
+        override fun get(key: String, default: Boolean) = stored[key] ?: default
         override fun set(key: String, value: Boolean) { stored[key] = value }
     }
 

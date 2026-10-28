@@ -50,11 +50,17 @@ interface PhotoPreparer<T> {
 }
 
 /**
+ * One sample of a video: the actual frame time, the model's parameters estimated on the frame, and optionally a few
+ * pixels from the frame's watermark corner (add-branding-and-watermark D6).
+ */
+data class TimelineSample(val timeUs: Long, val params: CorrectionParams, val corner: IntArray? = null)
+
+/**
  * Reads timeline samples of a video (add-video-processing D1): for each target time, the sync frame nearest to it and the
- * model's parameters estimated on it. Returns (actual frame time, parameters) per frame it could read.
+ * model's parameters estimated on it. Returns one [TimelineSample] per frame it could read.
  */
 fun interface TimelineSampler {
-    suspend fun sample(source: String, targetTimesUs: List<Long>): List<Pair<Long, CorrectionParams>>
+    suspend fun sample(source: String, targetTimesUs: List<Long>): List<TimelineSample>
 }
 
 /** An item of the working set as the store sees it; [videoDurationUs] is set for videos. */
@@ -340,7 +346,7 @@ class PhotoPreviewStore<T>(
         v.done += targets
         (outcome.getOrNull() as? Result.Sampled)?.samples?.let { samples ->
             var t = v.timeline.value
-            for ((time, params) in samples) t = t.withSample(time, params)
+            for ((time, params, corner) in samples) t = t.withSample(time, params, corner)
             v.timeline.value = t
         }
         if (v.complete) {
@@ -352,7 +358,7 @@ class PhotoPreviewStore<T>(
     }
 
     private sealed interface Result<out T> {
-        class Sampled(val samples: List<Pair<Long, CorrectionParams>>) : Result<Nothing>
+        class Sampled(val samples: List<TimelineSample>) : Result<Nothing>
         class Prepared<T>(val prepared: com.markopacak.divelens.correction.Prepared<T>) : Result<T>
         class Estimated(val correction: Correction) : Result<Nothing>
         class Rendered<T>(val thumbnail: T?, val strength: Float) : Result<T>

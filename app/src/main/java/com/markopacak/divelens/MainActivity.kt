@@ -2,6 +2,7 @@ package com.markopacak.divelens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.ext.SdkExtensions
@@ -14,8 +15,10 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -27,12 +30,19 @@ import com.markopacak.divelens.ui.StrengthControls
 import com.markopacak.divelens.ui.help.HelpIntents
 import com.markopacak.divelens.ui.help.SettingsHelpScreen
 import com.markopacak.divelens.ui.help.ViewerGuidance
+import com.markopacak.divelens.ui.help.WatermarkSetting
+import com.markopacak.divelens.ui.theme.DarkColors
 import com.markopacak.divelens.ui.theme.DiveLensTheme
+import com.markopacak.divelens.ui.theme.LightColors
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The theme's window background is the launch screen; behind the app it is the screen colour, so page
+        // transitions never show the launch picture (add-branding-and-watermark D2).
+        val night = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        window.setBackgroundDrawable((if (night) DarkColors else LightColors).background.toArgb().toDrawable())
         enableEdgeToEdge()
         setContent {
             DiveLensTheme {
@@ -52,7 +62,12 @@ class MainActivity : ComponentActivity() {
                 val pendingTips by graph.help.pending.collectAsStateWithLifecycle()
                 val helpActions = remember(context) { HelpIntents.actions(context, version, graph.help::resetTips) }
                 AppScreens(
-                    settingsHelp = { back -> SettingsHelpScreen(appVersion = version, actions = helpActions, onBack = back) },
+                    settingsHelp = { back ->
+                        SettingsHelpScreen(appVersion = version, actions = helpActions, onBack = back, settings = {
+                            val watermark by graph.exportPrefs.watermark.collectAsStateWithLifecycle()
+                            WatermarkSetting(on = watermark, onChange = graph.exportPrefs::setWatermark)
+                        })
+                    },
                 ) { openSettings ->
                     ImportExportScreen(
                         state = state,

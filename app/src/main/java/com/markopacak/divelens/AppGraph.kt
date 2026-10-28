@@ -12,6 +12,7 @@ import com.markopacak.divelens.correction.GpuViewerRenderer
 import com.markopacak.divelens.correction.PhotoPreviewStore
 import com.markopacak.divelens.export.AlwaysAllowExportGate
 import com.markopacak.divelens.export.ExportItemUseCase
+import com.markopacak.divelens.export.ExportPrefs
 import com.markopacak.divelens.export.ExportService
 import com.markopacak.divelens.export.PendingRows
 import com.markopacak.divelens.export.MediaStorePhotoWriter
@@ -19,6 +20,9 @@ import com.markopacak.divelens.export.MediaStoreVideoWriter
 import com.markopacak.divelens.importer.MediaImporter
 import com.markopacak.divelens.ui.WorkingSession
 import com.markopacak.divelens.ui.help.HelpPrefs
+import com.markopacak.divelens.watermark.PhotoWatermark
+import com.markopacak.divelens.watermark.VideoWatermark
+import com.markopacak.divelens.watermark.WatermarkRenderer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,17 +39,28 @@ class AppGraph(context: Context) {
     private val resolver = app.contentResolver
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    val store = PhotoPreviewStore(AndroidPhotoPreparer(resolver), CoroutineScope(SupervisorJob()), sampler = AndroidTimelineSampler(resolver))
+    private val watermark = WatermarkRenderer(app.assets)
 
-    // The exports apply the correction the preview shows, at the item's strength.
-    private val photoWriter = MediaStorePhotoWriter(resolver, app.cacheDir, CorrectionPhotoProcessor(store::correction, store::strengthOf))
-    private val videoWriter = MediaStoreVideoWriter(app, store::completeTimeline, store::strengthOf)
+    // Video samples also keep their watermark corner, for the clip's light or dark mark (add-branding-and-watermark D6).
+    val store = PhotoPreviewStore(
+        AndroidPhotoPreparer(resolver), CoroutineScope(SupervisorJob()),
+        sampler = AndroidTimelineSampler(resolver, markAspect = watermark.aspect()),
+    )
+
+    private val flags = HelpPrefs.flags(app.getSharedPreferences(PREFS, Context.MODE_PRIVATE))
+
+    /** The export settings: the watermark switch (add-branding-and-watermark D8). */
+    val exportPrefs = ExportPrefs(flags)
+
+    // The exports apply the correction the preview shows, at the item's strength, then the watermark if it is on.
+    private val photoWriter = MediaStorePhotoWriter(resolver, app.cacheDir, CorrectionPhotoProcessor(store::correction, store::strengthOf), watermark = PhotoWatermark(watermark))
+    private val videoWriter = MediaStoreVideoWriter(app, store::completeTimeline, store::strengthOf, watermark = VideoWatermark(watermark))
     private val exportItem = ExportItemUseCase(AlwaysAllowExportGate, photoWriter, videoWriter)
 
-    val controller = ExportController(BatchExporter { exportItem(it) }, scope)
+    val controller = ExportController(BatchExporter { item, options -> exportItem(item, options) }, scope, exportPrefs::options)
 
     /** The one-time gesture tips already shown (add-help-and-legal D6). */
-    val help = HelpPrefs.of(app.getSharedPreferences(PREFS, Context.MODE_PRIVATE))
+    val help = HelpPrefs(flags)
 
     val session = WorkingSession(scope, MediaImporter(resolver)::import, controller, store, GpuViewerRenderer(resolver, store::correction))
 

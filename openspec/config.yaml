@@ -60,7 +60,8 @@ context: |
   - Monetization: free download, one-time unlock (non-consumable in-app product).
     Restore the purchase from Play on reinstall or a new device; never charge twice.
   - Trial: N = 3 exports; a photo and a video each count as 1, whatever the length.
-    Counter is stored locally (may reset on reinstall; accepted). No watermarking.
+    Counter is stored locally (may reset on reinstall; accepted). The watermark is not
+    tied to the trial: anyone, free or paid, can turn it off in Settings.
   - Batch processing IS in v1: the user can select and correct multiple items at once.
     Each item in a batch counts toward the trial.
   - The name "DiveLens" is final; keep the user-visible name in one string resource.
@@ -81,7 +82,8 @@ context: |
   3 add-preview-compare (preview-compare), 4 add-manual-adjustment (manual-adjustment),
   5 add-video-processing (video-processing), 6 add-help-and-legal (help-and-legal: gesture
   hints, tutorial, documentation, licence, terms of service, agreements),
-  7 add-trial-and-purchase (licensing). The working-set limit of 20 (was 50) comes with change 5.
+  7 add-branding-and-watermark (branding: icons, palette, export watermark),
+  8 add-trial-and-purchase (licensing). The working-set limit of 20 (was 50) comes with change 5.
   After the Android release: an iPhone (iOS) app with the same features and privacy
   constraints; to be planned as its own project once Android has shipped.
 

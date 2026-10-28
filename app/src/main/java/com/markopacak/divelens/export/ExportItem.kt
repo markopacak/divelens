@@ -16,9 +16,9 @@ internal fun Throwable.isOutOfSpace(): Boolean =
 /** Thrown by a [PhotoWriter] or [VideoWriter] with the user-facing reason for the failure. */
 class ExportException(val reason: FailureReason, cause: Throwable? = null) : Exception(reason.name, cause)
 
-/** Writes one photo to the gallery and returns the new item's URI string. */
+/** Writes one photo to the gallery with the batch's [ExportOptions] and returns the new item's URI string. */
 fun interface PhotoWriter {
-    suspend fun write(photo: MediaItem.Photo): String
+    suspend fun write(photo: MediaItem.Photo, options: ExportOptions): String
 }
 
 sealed interface ItemResult {
@@ -34,13 +34,13 @@ class ExportItemUseCase(
     private val videoWriter: VideoWriter? = null,
 ) {
 
-    suspend operator fun invoke(item: MediaItem): ItemResult {
+    suspend operator fun invoke(item: MediaItem, options: ExportOptions = ExportOptions.PLAIN): ItemResult {
         val decision = gate.check(item)
         if (decision is GateDecision.Refused) return ItemResult.Refused(decision.message)
         val uri = try {
             when (item) {
-                is MediaItem.Photo -> writer.write(item)
-                is MediaItem.Video -> videoWriter?.write(item) ?: return ItemResult.Failed(FailureReason.UnreadableSource)
+                is MediaItem.Photo -> writer.write(item, options)
+                is MediaItem.Video -> videoWriter?.write(item, options) ?: return ItemResult.Failed(FailureReason.UnreadableSource)
             }
         } catch (e: CancellationException) {
             throw e

@@ -7,6 +7,9 @@ import kotlin.math.exp
  * sampled through the clip, smoothed over time with a Gaussian of [SIGMA_US] weighted by the real sample
  * times, linearly interpolated between samples and held before the first and after the last.
  *
+ * Each sample may also carry a few ARGB pixels from the frame's watermark corner (add-branding-and-watermark D6), which
+ * the export uses to pick the watermark version once per clip; nothing here reads them.
+ *
  * Immutable: [withSample] returns a new timeline. A timeline with only some samples answers as if the clip
  * ended at its last sample, so playback can start before the analysis is done. The matrices may come from
  * any look's estimator; nothing here depends on the model. `tools/reference/video_check.py` is the reference.
@@ -16,11 +19,12 @@ class CorrectionTimeline private constructor(
     val durationUs: Long,
     private val times: LongArray,
     private val raw: Array<DoubleArray>,
+    private val cornerPixels: Array<IntArray?>,
     internal val darkRedCap: Boolean,
     /** True once every planned sample is in. */
     val isComplete: Boolean,
 ) {
-    constructor(durationUs: Long) : this(durationUs, LongArray(0), emptyArray(), true, false)
+    constructor(durationUs: Long) : this(durationUs, LongArray(0), emptyArray(), emptyArray(), true, false)
 
     private val smoothed: Array<DoubleArray> = smooth(times, raw)
 
@@ -29,22 +33,29 @@ class CorrectionTimeline private constructor(
     /** Times of the samples, in order. */
     val sampleTimesUs: List<Long> get() = times.toList()
 
-    /** This timeline with the sample at [timeUs] (replacing one at the same time). */
-    fun withSample(timeUs: Long, params: CorrectionParams): CorrectionTimeline {
+    /** The samples' corner pixels, by sample time, for the samples that have them. */
+    val corners: List<Pair<Long, IntArray>>
+        get() = times.indices.mapNotNull { i -> cornerPixels[i]?.let { times[i] to it.copyOf() } }
+
+    /** This timeline with the sample at [timeUs] (replacing one at the same time), with its [corner] pixels if given. */
+    fun withSample(timeUs: Long, params: CorrectionParams, corner: IntArray? = null): CorrectionTimeline {
         val m = DoubleArray(12) { params.matrix[it].toDouble() }
+        val c = corner?.copyOf()
         val i = times.binarySearch(timeUs)
         if (i >= 0) {
             val r = raw.copyOf(); r[i] = m
-            return CorrectionTimeline(durationUs, times, r, params.darkRedCap, isComplete)
+            val k = cornerPixels.copyOf(); k[i] = c
+            return CorrectionTimeline(durationUs, times, r, k, params.darkRedCap, isComplete)
         }
         val at = -i - 1
         val t = LongArray(times.size + 1) { if (it < at) times[it] else if (it == at) timeUs else times[it - 1] }
         val r = Array(raw.size + 1) { if (it < at) raw[it] else if (it == at) m else raw[it - 1] }
-        return CorrectionTimeline(durationUs, t, r, params.darkRedCap, isComplete)
+        val k = Array(cornerPixels.size + 1) { if (it < at) cornerPixels[it] else if (it == at) c else cornerPixels[it - 1] }
+        return CorrectionTimeline(durationUs, t, r, k, params.darkRedCap, isComplete)
     }
 
     /** This timeline marked as complete: every planned sample is in. */
-    fun completed(): CorrectionTimeline = CorrectionTimeline(durationUs, times, raw, darkRedCap, true)
+    fun completed(): CorrectionTimeline = CorrectionTimeline(durationUs, times, raw, cornerPixels, darkRedCap, true)
 
     /** The smoothed, interpolated 3×4 row-major matrix at [timeUs], or null without samples. */
     fun matrixAt(timeUs: Long): DoubleArray? {

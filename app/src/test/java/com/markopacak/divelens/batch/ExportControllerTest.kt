@@ -4,7 +4,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.markopacak.divelens.export.ExportOptions
+import com.markopacak.divelens.export.ExportPrefs
 import com.markopacak.divelens.export.ItemResult
+import com.markopacak.divelens.ui.help.HelpPrefs
 import com.markopacak.divelens.importer.ImportResult
 import com.markopacak.divelens.media.ItemStatus
 import com.markopacak.divelens.media.MediaItem
@@ -25,7 +28,7 @@ class ExportControllerTest {
     private val items = (1..3).map { MediaItem.Photo("content://p/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
     private val gates = items.associate { it.source to CompletableDeferred<Unit>() }
 
-    private fun TestScope.controller() = ExportController(BatchExporter { gates.getValue(it.source).await(); ItemResult.Exported("out") }, backgroundScope)
+    private fun TestScope.controller() = ExportController(BatchExporter { it, _ -> gates.getValue(it.source).await(); ItemResult.Exported("out") }, backgroundScope)
 
     @Test fun progressRunsAndFinishes() = runTest {
         val controller = controller()
@@ -71,5 +74,33 @@ class ExportControllerTest {
         assertEquals(BatchUi.Finished(3, emptyList(), cancelled = false), state.batch)
         // A new view model (the activity is back) shows the same session.
         assertEquals(state, ImportExportViewModel(session).state.value)
+    }
+    @Test fun theWatermarkSettingIsReadOncePerBatch() = runTest {
+        val stored = mutableMapOf<String, Boolean>()
+        val prefs = ExportPrefs(object : HelpPrefs.Flags {
+            override fun get(key: String, default: Boolean) = stored[key] ?: default
+            override fun set(key: String, value: Boolean) { stored[key] = value }
+        })
+        val seen = mutableListOf<ExportOptions>()
+        val controller = ExportController(
+            BatchExporter { item, options -> seen += options; gates.getValue(item.source).await(); ItemResult.Exported("out") },
+            backgroundScope,
+            prefs::options,
+        )
+        controller.start(items)
+        gates.getValue(items[0].source).complete(Unit)
+        runCurrent()
+        prefs.setWatermark(false) // turned off after the first item
+        gates.values.forEach { it.complete(Unit) }
+        runCurrent()
+        assertEquals(List(3) { ExportOptions(watermark = true) }, seen)
+        controller.acknowledge()
+
+        val next = items.map { it.copy(source = it.source + "/next") }
+        val nextGates = next.associate { it.source to CompletableDeferred<Unit>().apply { complete(Unit) } }
+        val second = ExportController(BatchExporter { item, options -> seen += options; nextGates.getValue(item.source).await(); ItemResult.Exported("out") }, backgroundScope, prefs::options)
+        second.start(next)
+        runCurrent()
+        assertEquals(List(3) { ExportOptions(watermark = false) }, seen.drop(3))
     }
 }

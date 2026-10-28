@@ -1,5 +1,6 @@
 package com.markopacak.divelens.batch
 
+import com.markopacak.divelens.export.ExportOptions
 import com.markopacak.divelens.export.ItemResult
 import com.markopacak.divelens.media.MediaItem
 import kotlinx.coroutines.CancellationException
@@ -19,9 +20,14 @@ sealed interface ExportProgress {
 
 /**
  * Runs the export batch in an app-wide [scope] (add-video-processing D8), so it survives the activity and its view model;
- * the export service shows [progress] and can [cancel] it from the notification.
+ * the export service shows [progress] and can [cancel] it from the notification. [options] is read once per batch, when
+ * it starts (add-branding-and-watermark D8).
  */
-class ExportController(private val batchExporter: BatchExporter, private val scope: CoroutineScope) {
+class ExportController(
+    private val batchExporter: BatchExporter,
+    private val scope: CoroutineScope,
+    private val options: () -> ExportOptions = { ExportOptions.PLAIN },
+) {
     private val _progress = MutableStateFlow<ExportProgress>(ExportProgress.Idle)
     val progress: StateFlow<ExportProgress> = _progress.asStateFlow()
 
@@ -36,11 +42,12 @@ class ExportController(private val batchExporter: BatchExporter, private val sco
     fun start(items: List<MediaItem>, onEvent: (BatchEvent) -> Unit = {}, onEnd: (cancelled: Boolean) -> Unit = {}): Boolean {
         if (isRunning || items.isEmpty()) return false
         _progress.value = ExportProgress.Running(0, items.size)
+        val batchOptions = options()
         job = scope.launch {
             var cancelled = false
             var exported = 0
             try {
-                batchExporter.run(items).collect { event ->
+                batchExporter.run(items, batchOptions).collect { event ->
                     if (event is BatchEvent.Finished) {
                         if (event.result is ItemResult.Exported) exported++
                         _progress.value = ExportProgress.Running(event.done, event.total)

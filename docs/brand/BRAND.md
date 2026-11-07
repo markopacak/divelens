@@ -30,6 +30,8 @@ Show the icon circle-cropped in any previews or store graphics.
 | `icon/ic_launcher_monochrome.svg` | Themed icon / notification icon. Single flat colour (black in the file; Android tints it) |
 | `play/play_store_icon_512.png` | Google Play store icon, 512 x 512, full-bleed (Google applies the mask) |
 | `play/play_store_icon.svg` | Source of the Play icon |
+| `play/feature-graphic/feature_graphic_A_1024x500.png` | Google Play feature graphic, brand only (source: `feature_graphic_A.svg`) |
+| `play/feature-graphic/feature_graphic_B*.svg/.png`, `compose_b.py` | Before/after feature graphic template; see `README_B.md`. The finished image contains a personal dive photo and stays out of the repo |
 | `watermark/watermark_light.svg` | Export watermark for dark or mid-tone areas: white with soft dark shadow |
 | `watermark/watermark_dark.svg` | Export watermark for bright areas: navy with soft light halo |
 | `colors.xml` | Brand, light-theme and dark-theme colours for Android |

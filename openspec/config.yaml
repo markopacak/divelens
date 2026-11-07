@@ -4,7 +4,7 @@ context: |
   Product: DiveLens. Native Android app that auto-corrects underwater
   scuba photos AND videos (blue-green cast, missing red, flat contrast). Flow: one-tap
   auto-correct -> before/after compare -> fine-tune with sliders -> full-resolution export.
-  Paid app with a free trial of N items via Google Play Billing. No accounts, no backend.
+  Free version with daily limits, one-time unlock via Google Play Billing. No accounts, no backend.
 
   Privacy (hard constraint): all processing on-device; media never leaves the device.
   Public claim is exactly "Photos and videos never leave your device." Never claim
@@ -51,7 +51,7 @@ context: |
   free-storage check. Service type: mediaProcessing on Android 15+, dataSync on 10-14.
   HDR (10-bit HLG/PQ) input in v1: tone-map to SDR with Media3, then correct; export SDR.
 
-  Billing: trial counter stored on device; gate checks happen at export. Purchases must
+  Billing: daily export counter stored on device; gate checks happen at export. Purchases must
   be acknowledged within 3 days or Play refunds them automatically;
   verification is on-device. Billing only works once a build is on at least the
   internal testing track.
@@ -59,11 +59,25 @@ context: |
   Product decisions (2026-10-11):
   - Monetization: free download, one-time unlock (non-consumable in-app product).
     Restore the purchase from Play on reinstall or a new device; never charge twice.
-  - Trial: N = 3 exports; a photo and a video each count as 1, whatever the length.
-    Counter is stored locally (may reset on reinstall; accepted). The watermark is not
-    tied to the trial: anyone, free or paid, can turn it off in Settings.
+    Price (2026-10-29): 1.19 CHF / 1.19 EUR, set in Play Console, not in code; the app
+    shows the localised price Play returns. No Play Console account yet (2026-10-29).
+  - Free version (changed 2026-10-28, was a one-off trial of 3 exports): 10 exports per
+    day, with no end date; a photo and a video each count as 1, whatever the length.
+    The day is the phone's local calendar day (resets at midnight). The counter is
+    stored locally (reinstalling or changing the clock may reset it; accepted).
+    Free batch limit: 10 items in the working set (the paid version keeps 20).
+    The app shows a message when the free batch limit or the daily limit is reached.
+    An export larger than what is left for the day exports the items that fit (in
+    working-set order), skips the rest and explains why (daily limit, when it resets,
+    and the unlock).
+    If the unlock goes away (refund, chargeback), items already selected stay; the
+    batch limit of 10 only stops adding more, and exports follow the daily limit at once.
+    The watermark is not tied to the free version: anyone, free or paid, can turn it
+    off in Settings.
   - Batch processing IS in v1: the user can select and correct multiple items at once.
-    Each item in a batch counts toward the trial.
+    Each item in a batch counts toward the daily limit.
+  - Donations: a free user who taps Donate is first offered the unlock; donating on
+    top is possible after buying it.
   - The name "DiveLens" is final; keep the user-visible name in one string resource.
 
   Open source (hard constraint): the repository is public. Never commit credentials

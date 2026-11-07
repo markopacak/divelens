@@ -81,8 +81,9 @@ private enum class Topic(@StringRes val title: Int, @StringRes val text: Int) {
 }
 
 /**
- * Settings & help (add-help-and-legal D2): Settings (only when [settings] is given), Support DiveLens, foldable Help
- * and About. The legal texts open as full-screen pages that slide in; back closes them, then the screen.
+ * Settings & help (add-help-and-legal D2): Settings (only when [settings] is given), Support DiveLens with the
+ * [purchases] entries first (add-free-limits-and-purchase D8), foldable Help, a Developer section in debug builds
+ * ([developer], D10) and About. The legal texts open as full-screen pages that slide in; back closes them, then the screen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,6 +93,8 @@ fun SettingsHelpScreen(
     onBack: () -> Unit,
     settings: (@Composable () -> Unit)? = null,
     readText: (LegalDoc) -> String = defaultReader(),
+    purchases: (@Composable () -> Unit)? = null,
+    developer: (@Composable () -> Unit)? = null,
 ) {
     var doc by rememberSaveable { mutableStateOf<LegalDoc?>(null) }
     // The address shown when no app can open it.
@@ -103,7 +106,7 @@ fun SettingsHelpScreen(
             LegalPage(shown, readText, onBack = { doc = null })
         } else {
             saved.SaveableStateProvider("list") {
-                HelpList(appVersion, actions, onBack, settings, onOpen = { doc = it }, onUnopened = { unopened = it })
+                HelpList(appVersion, actions, onBack, settings, purchases, developer, onOpen = { doc = it }, onUnopened = { unopened = it })
             }
         }
     }
@@ -131,6 +134,8 @@ private fun HelpList(
     actions: HelpActions,
     onBack: () -> Unit,
     settings: (@Composable () -> Unit)?,
+    purchases: (@Composable () -> Unit)?,
+    developer: (@Composable () -> Unit)?,
     onOpen: (LegalDoc) -> Unit,
     onUnopened: (String) -> Unit,
 ) {
@@ -148,6 +153,7 @@ private fun HelpList(
                 item { settings() }
             }
             section(R.string.section_support)
+            if (purchases != null) item { purchases() }
             item {
                 Entry(stringResource(R.string.send_feedback), stringResource(R.string.send_feedback_detail)) {
                     if (!actions.sendFeedback()) onUnopened(Links.FEEDBACK_EMAIL)
@@ -165,6 +171,10 @@ private fun HelpList(
                     actions.showTipsAgain()
                     scope.launch { snackbar.showSnackbar(tipsReset) }
                 }
+            }
+            if (developer != null) {
+                section(R.string.section_developer)
+                item { developer() }
             }
             section(R.string.section_about)
             item {
@@ -209,9 +219,10 @@ private fun LazyListScope.section(@StringRes title: Int) {
     }
 }
 
+/** One tappable row of the screen, also used by the purchase entries and the debug developer panel. */
 @Composable
-private fun Entry(title: String, detail: String? = null, onClick: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp)) {
+internal fun Entry(title: String, detail: String? = null, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp)) {
         Text(title, style = MaterialTheme.typography.bodyLarge)
         if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

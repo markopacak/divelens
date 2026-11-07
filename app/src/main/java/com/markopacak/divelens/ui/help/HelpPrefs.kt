@@ -19,6 +19,10 @@ class HelpPrefs(private val flags: Flags) {
     interface Flags {
         fun get(key: String, default: Boolean = false): Boolean
         fun set(key: String, value: Boolean)
+
+        /** Numbers, for the daily export count (add-free-limits-and-purchase D4). Fakes that only hold booleans skip them. */
+        fun getLong(key: String, default: Long = 0): Long = throw UnsupportedOperationException("numbers not kept: $key")
+        fun setLong(key: String, value: Long): Unit = throw UnsupportedOperationException("numbers not kept: $key")
     }
 
     private val pendingState = MutableStateFlow(Tip.entries.filterNot { flags.get(it.key) }.toSet())
@@ -42,6 +46,8 @@ class HelpPrefs(private val flags: Flags) {
         fun flags(prefs: SharedPreferences): Flags = object : Flags {
             override fun get(key: String, default: Boolean) = prefs.getBoolean(key, default)
             override fun set(key: String, value: Boolean) = prefs.edit().putBoolean(key, value).apply()
+            override fun getLong(key: String, default: Long) = prefs.getLong(key, default)
+            override fun setLong(key: String, value: Long) = prefs.edit().putLong(key, value).apply()
         }
     }
 }

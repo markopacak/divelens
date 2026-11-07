@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug build only: the simulated store and the developer panel (add-free-limits-and-purchase D10). -->
+<resources>
+    <string name="fake_sheet_title">Simulated Google Play</string>
+    <string name="fake_sheet_message">%1$s · %2$s\nThis debug build has no Google Play. Choose how the purchase ends.</string>
+    <string name="fake_sheet_no_price">no price</string>
+    <string name="fake_buy">Buy</string>
+    <string name="fake_pay_later">Pay later</string>
+    <string name="fake_cancel">Cancel</string>
+    <string name="fake_fail">Fail</string>
+    <string name="dev_owns_full">Owns the full version</string>
+    <string name="dev_owns_full_detail">Buys or refunds in the fake store, then refreshes</string>
+    <string name="dev_refund_silently">Refund without refreshing</string>
+    <string name="dev_refund_silently_detail">The app notices when it next returns to the foreground</string>
+    <string name="dev_complete_pending">Complete the pending payment</string>
+    <string name="dev_no_pending">No payment is pending</string>
+    <string name="dev_store_available">Store available</string>
+    <string name="dev_store_available_detail">Off: behaves like Google Play unreachable</string>
+    <string name="dev_count">Exports counted today: %d</string>
+    <string name="dev_set_count">Set to %d</string>
+</resources>

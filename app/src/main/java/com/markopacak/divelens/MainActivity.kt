@@ -23,11 +23,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.markopacak.divelens.debug.DebugTools
 import com.markopacak.divelens.ui.AppScreens
 import com.markopacak.divelens.ui.ImportExportScreen
 import com.markopacak.divelens.ui.ImportExportViewModel
 import com.markopacak.divelens.ui.StrengthControls
 import com.markopacak.divelens.ui.help.HelpIntents
+import com.markopacak.divelens.ui.help.PurchaseActions
+import com.markopacak.divelens.ui.help.PurchaseEntries
+import com.markopacak.divelens.ui.help.PurchaseMessages
 import com.markopacak.divelens.ui.help.SettingsHelpScreen
 import com.markopacak.divelens.ui.help.ViewerGuidance
 import com.markopacak.divelens.ui.help.WatermarkSetting
@@ -52,7 +56,7 @@ class MainActivity : ComponentActivity() {
                 val previews by vm.previews.collectAsStateWithLifecycle()
                 val strengths by vm.strengths.collectAsStateWithLifecycle()
                 val viewer = remember(vm) { vm.viewer }
-                val room = state.workingSet.room
+                val room = state.workingSet.room(state.limit)
                 val contract = remember(room) { ActivityResultContracts.PickMultipleVisualMedia(pickerMaxItems(room)) }
                 val picker = rememberLauncherForActivityResult(contract) { vm.onPicked(it) }
                 // The notification permission is asked once, at the first export; the export runs whatever the answer.
@@ -61,12 +65,30 @@ class MainActivity : ComponentActivity() {
                 val version = remember { HelpIntents.appVersion(context) }
                 val pendingTips by graph.help.pending.collectAsStateWithLifecycle()
                 val helpActions = remember(context) { HelpIntents.actions(context, version, graph.help::resetTips) }
+                // Purchases need this activity for Play's sheet; the controller never keeps it (add-free-limits-and-purchase D8).
+                val purchaseActions = remember {
+                    PurchaseActions(
+                        buyFullVersion = { graph.purchases.buyFullVersion(this@MainActivity) },
+                        restore = graph.purchases::restore,
+                        donate = { tip -> graph.purchases.donate(this@MainActivity, tip) },
+                    )
+                }
                 AppScreens(
                     settingsHelp = { back ->
-                        SettingsHelpScreen(appVersion = version, actions = helpActions, onBack = back, settings = {
-                            val watermark by graph.exportPrefs.watermark.collectAsStateWithLifecycle()
-                            WatermarkSetting(on = watermark, onChange = graph.exportPrefs::setWatermark)
-                        })
+                        SettingsHelpScreen(
+                            appVersion = version, actions = helpActions, onBack = back,
+                            settings = {
+                                val watermark by graph.exportPrefs.watermark.collectAsStateWithLifecycle()
+                                WatermarkSetting(on = watermark, onChange = graph.exportPrefs::setWatermark)
+                            },
+                            purchases = {
+                                val licence by graph.licence.state.collectAsStateWithLifecycle()
+                                val prices by graph.purchases.prices.collectAsStateWithLifecycle()
+                                val busy by graph.purchases.busy.collectAsStateWithLifecycle()
+                                PurchaseEntries(licence, prices, busy, purchaseActions)
+                            },
+                            developer = DebugTools.developer?.let { panel -> { panel(graph) } },
+                        )
                     },
                 ) { openSettings ->
                     ImportExportScreen(
@@ -87,10 +109,19 @@ class MainActivity : ComponentActivity() {
                         videos = vm.videos,
                         onOpenSettings = openSettings,
                         guidance = ViewerGuidance(pendingTips, graph.help::done),
+                        onDismissDailyLimit = vm::dismissDailyLimit,
+                        onFullVersion = purchaseActions.buyFullVersion,
                     )
                 }
+                PurchaseMessages(graph.purchases.messages)
+                DebugTools.Overlay(graph)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        (application as DiveLensApp).graph.onForeground()
     }
 
     /** True the first time an export starts on Android 13+ without the notification permission (add-video-processing D8). */

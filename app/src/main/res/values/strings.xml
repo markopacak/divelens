@@ -59,6 +59,20 @@
         <item quantity="other">%1$d items were left out. A batch holds at most %2$d items.</item>
     </plurals>
     <string name="limit_reached">A batch holds at most %d items. Remove some or clear the set to add more.</string>
+    <!-- The free version (add-free-limits-and-purchase D6). %1$d is the free limit, %2$d the full version's. -->
+    <string name="limit_reached_free">The free version holds %1$d items at a time; the full version holds %2$d. Remove some or clear the set to add more.</string>
+    <string name="left_out_free">The free version holds %1$d items at a time; the full version holds %2$d.</string>
+    <plurals name="exports_left_today">
+        <item quantity="one">%1$d of %2$d free exports left today</item>
+        <item quantity="other">%1$d of %2$d free exports left today</item>
+    </plurals>
+    <string name="full_version">Full version</string>
+    <string name="daily_limit_title">Daily limit reached</string>
+    <string name="daily_limit_message">The free version exports %d items a day. The limit resets at midnight. The full version has no daily limit.</string>
+    <plurals name="summary_daily_limit">
+        <item quantity="one">%1$d item wasn\'t exported: the free version exports %2$d items a day. The limit resets at midnight.</item>
+        <item quantity="other">%1$d items weren\'t exported: the free version exports %2$d items a day. The limit resets at midnight.</item>
+    </plurals>
     <string name="reject_too_large">photo is too large (over 100 megapixels)</string>
     <string name="reject_too_large_for_device">video is too large for this device</string>
 
@@ -66,6 +80,7 @@
     <string name="reason_unreadable">file could not be read</string>
     <string name="reason_memory">not enough memory to process this item</string>
     <string name="reason_write">could not be saved</string>
+    <string name="reason_daily_limit">daily limit reached</string>
 
     <!-- Settings & help (add-help-and-legal) -->
     <string name="settings_help">Settings &amp; help</string>
@@ -75,6 +90,37 @@
     <string name="setting_watermark">Watermark on exports</string>
     <string name="setting_watermark_summary">Adds a small diveLENS mark to the corner of exported photos and videos</string>
     <string name="section_support">Support DiveLens</string>
+    <string name="section_developer">Developer (debug build)</string>
+    <!-- Full version and donations (add-free-limits-and-purchase D8). -->
+    <string name="full_version_price">Full version · %s</string>
+    <string name="full_version_detail">No daily limit and 20 items at a time. One-time purchase.</string>
+    <string name="full_version_waiting">Waiting for payment. It unlocks as soon as Google Play confirms it.</string>
+    <string name="full_version_active">Full version active</string>
+    <string name="full_version_active_detail">Thank you for supporting %s.</string>
+    <string name="restore_purchase">Restore purchase</string>
+    <string name="restore_purchase_detail">Ask Google Play again for a purchase made with this account</string>
+    <string name="donate">Donate</string>
+    <string name="donate_detail">Support the development of %s</string>
+    <string name="donate_free_title">Support %s</string>
+    <string name="donate_free_message">The best way to support %1$s is the full version: a one-time purchase that removes the daily limit. Donations are possible after that.</string>
+    <string name="not_now">Not now</string>
+    <string name="donate_title">Donate</string>
+    <string name="donate_message">Thank you for considering a donation. It unlocks nothing; it helps keep %s going.</string>
+    <string name="tip_small">Small</string>
+    <string name="tip_medium">Medium</string>
+    <string name="tip_large">Large</string>
+    <string name="tip_with_price">%1$s · %2$s</string>
+    <string name="purchase_thanks_title">Thank you!</string>
+    <string name="purchase_thanks_full">The full version is active: no daily limit and 20 items at a time.</string>
+    <string name="purchase_thanks_donation">Thank you for your donation to %s.</string>
+    <string name="purchase_pending_title">Waiting for payment</string>
+    <string name="purchase_pending">The full version unlocks as soon as Google Play confirms the payment.</string>
+    <string name="purchase_unavailable_title">Not available right now</string>
+    <string name="purchase_unavailable">Purchases are not available right now. Check that Google Play is installed and that you\'re online, then try again.</string>
+    <string name="purchase_failed_title">Purchase not completed</string>
+    <string name="purchase_failed">The purchase didn\'t complete. Please try again later.</string>
+    <string name="purchase_restored">The full version is restored.</string>
+    <string name="purchase_nothing_to_restore">Google Play reports no full version purchase for this account.</string>
     <string name="section_help">Help</string>
     <string name="section_about">About</string>
     <string name="send_feedback">Send feedback</string>
@@ -85,7 +131,7 @@
     <string name="no_app_message">You can copy the address and use it on another device:</string>
 
     <string name="help_getting_started">Getting started</string>
-    <string name="help_getting_started_text">1. Tap Select photos and videos and pick up to 20 items.\n2. DiveLens corrects each one automatically. The grid shows the corrected result.\n3. Tap an item to check it full screen, and adjust the strength if you like.\n4. Tap Export to save corrected copies to the DiveLens album in your gallery. Your originals stay as they are.</string>
+    <string name="help_getting_started_text">1. Tap Select photos and videos and pick up to 10 items (20 in the full version).\n2. DiveLens corrects each one automatically. The grid shows the corrected result.\n3. Tap an item to check it full screen, and adjust the strength if you like.\n4. Tap Export to save corrected copies to the DiveLens album in your gallery. Your originals stay as they are.</string>
     <string name="help_gestures">Gestures</string>
     <string name="help_gestures_text">Hold on a photo or video to see the original. Let go to see the correction again.\nDouble-tap or pinch to zoom a photo, up to its real pixels.\nSwipe left or right to go to the next or previous item.\nOn videos, tap play or pause, and drag the time bar to move through the clip.</string>
     <string name="help_strength">Correction strength</string>
@@ -93,7 +139,7 @@
     <string name="help_videos">Videos</string>
     <string name="help_videos_text">Videos play corrected in the viewer, and the correction follows the colour as it changes with depth. DiveLens reads MP4 and MOV videos in H.264 or HEVC. HDR videos are exported in standard range.\nAn export keeps the sound and the date taken. It runs in the background with a notification, where you can also cancel it.</string>
     <string name="help_privacy">Privacy</string>
-    <string name="help_privacy_text">Photos and videos never leave your device. DiveLens corrects them on your phone, has no accounts and sends nothing anywhere. Exported copies keep the date and orientation, but not the location.</string>
+    <string name="help_privacy_text">Photos and videos never leave your device. DiveLens corrects them on your phone and has no accounts. Only purchases go through Google Play. Exported copies keep the date and orientation, but not the location.</string>
     <string name="show_tips_again">Show tips again</string>
     <string name="show_tips_again_detail">See the gesture tips in the viewer once more</string>
     <string name="tips_reset">The tips will show again in the viewer.</string>

@@ -7,6 +7,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertCountEquals
@@ -19,6 +23,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
+import com.markopacak.divelens.licensing.Limits
 import com.markopacak.divelens.analysis.CorrectionParams
 import com.markopacak.divelens.correction.PreviewEntry
 import com.markopacak.divelens.media.FailureReason
@@ -26,6 +31,7 @@ import com.markopacak.divelens.media.ItemStatus
 import com.markopacak.divelens.importer.Rejection
 import com.markopacak.divelens.importer.RejectionReason
 import com.markopacak.divelens.media.MediaItem
+import com.markopacak.divelens.media.RefusalReason
 import com.markopacak.divelens.media.WorkingItem
 import com.markopacak.divelens.media.WorkingSet
 import com.markopacak.divelens.ui.help.HelpActions
@@ -68,6 +74,8 @@ class ImportExportScreenTest {
             onDismissSummary = { events += "dismiss" },
             onDismissRejections = { events += "dismissRejections" },
             onOpenSettings = onOpenSettings,
+            onFullVersion = { events += "full" },
+            onDismissDailyLimit = { events += "dismissDailyLimit" },
         )
     }
 
@@ -88,7 +96,7 @@ class ImportExportScreenTest {
         setScreen()
         rule.onNodeWithText("Select photos and videos").assertIsDisplayed().performClick()
 
-        state = ImportExportUiState(workingSet = WorkingSet().add(photos))
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET))
         rule.onNodeWithTag("photo_grid").assertIsDisplayed()
         rule.onNodeWithText("Export 3 items").assertIsDisplayed().performClick()
 
@@ -112,7 +120,7 @@ class ImportExportScreenTest {
     }
 
     @Test fun settingsOpenFromTheTopBarAndBackReturnsWithTheSetUnchanged() {
-        state = ImportExportUiState(workingSet = WorkingSet().add(photos))
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET))
         setApp()
         rule.onNodeWithTag("open_settings").performClick()
         rule.onNodeWithTag("settings_help").assertIsDisplayed()
@@ -136,7 +144,7 @@ class ImportExportScreenTest {
     }
 
     @Test fun settingsSlideInAndOutWithTheArrowAndTheSystemBack() {
-        state = ImportExportUiState(workingSet = WorkingSet().add(photos))
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET))
         setApp()
         rule.mainClock.autoAdvance = false
         assertSlides("photo_grid", "settings_help") { rule.onNodeWithTag("open_settings").performClick() }
@@ -147,8 +155,8 @@ class ImportExportScreenTest {
     }
 
     @Test fun theGridKeepsItsScrollPositionAcrossSettings() {
-        val many = (1..WorkingSet.LIMIT).map { MediaItem.Photo("content://test/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
-        state = ImportExportUiState(workingSet = WorkingSet().add(many))
+        val many = (1..Limits.FULL_WORKING_SET).map { MediaItem.Photo("content://test/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
+        state = ImportExportUiState(workingSet = WorkingSet().add(many, Limits.FULL_WORKING_SET))
         setApp()
         rule.onNodeWithTag("photo_grid").performScrollToIndex(many.lastIndex)
         rule.onAllNodesWithContentDescription("IMG_1.jpg").assertCountEquals(0) // scrolled past the first row
@@ -161,7 +169,7 @@ class ImportExportScreenTest {
 
     @Test fun settingsOpenDuringAnExportAndTheProgressIsStillShownAfter() {
         state = ImportExportUiState(
-            workingSet = WorkingSet().add(photos).withStatus(photos[0].source, ItemStatus.Exporting),
+            workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET).withStatus(photos[0].source, ItemStatus.Exporting),
             batch = BatchUi.Running(done = 0, total = 3),
         )
         setApp()
@@ -180,7 +188,7 @@ class ImportExportScreenTest {
     }
 
     @Test fun backWithPhotosSelectedClearsTheWorkingSet() {
-        state = ImportExportUiState(workingSet = WorkingSet().add(photos))
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET))
         setScreen()
         pressBack()
         rule.waitForIdle()
@@ -188,7 +196,7 @@ class ImportExportScreenTest {
     }
 
     @Test fun backDuringExportAsksBeforeCancelling() {
-        state = ImportExportUiState(workingSet = WorkingSet().add(photos), batch = BatchUi.Running(done = 1, total = 3))
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET), batch = BatchUi.Running(done = 1, total = 3))
         setScreen()
 
         pressBack()
@@ -204,8 +212,8 @@ class ImportExportScreenTest {
     }
 
     @Test fun fullSetDisablesAddAndExplainsTheLimit() {
-        val many = (1..WorkingSet.LIMIT).map { MediaItem.Photo("content://test/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
-        state = ImportExportUiState(workingSet = WorkingSet().add(many))
+        val many = (1..Limits.FULL_WORKING_SET).map { MediaItem.Photo("content://test/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
+        state = ImportExportUiState(workingSet = WorkingSet().add(many, Limits.FULL_WORKING_SET))
         setScreen()
         rule.onNodeWithText("Add").assertIsNotEnabled()
         rule.onNodeWithText("A batch holds at most 20 items. Remove some or clear the set to add more.").assertIsDisplayed()
@@ -214,8 +222,74 @@ class ImportExportScreenTest {
         rule.onNodeWithText("Add").assertIsEnabled()
     }
 
+    @Test fun theFreeVersionStopsAtTenAndOffersTheFullVersion() {
+        val ten = (1..Limits.FREE_WORKING_SET).map { MediaItem.Photo("content://test/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
+        state = ImportExportUiState(workingSet = WorkingSet().add(ten, Limits.FREE_WORKING_SET), limit = 10, free = true, remainingToday = 10)
+        setScreen()
+        rule.onNodeWithText("Add").assertIsNotEnabled()
+        rule.onNodeWithText("The free version holds 10 items at a time; the full version holds 20. Remove some or clear the set to add more.")
+            .assertIsDisplayed()
+        rule.onNodeWithTag("limit_full_version").assertIsDisplayed().performClick()
+        assertEquals(listOf("full"), events)
+    }
+
+    @Test fun theFullVersionAtTwentyOffersNoPurchase() {
+        val many = (1..Limits.FULL_WORKING_SET).map { MediaItem.Photo("content://test/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
+        state = ImportExportUiState(workingSet = WorkingSet().add(many, Limits.FULL_WORKING_SET))
+        setScreen()
+        rule.onNodeWithText("A batch holds at most 20 items. Remove some or clear the set to add more.").assertIsDisplayed()
+        rule.onAllNodesWithTag("limit_full_version").assertCountEquals(0)
+    }
+
+    @Test fun theFreeVersionShowsTheExportsLeftToday() {
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos, 10), limit = 10, free = true, remainingToday = 7)
+        setScreen()
+        rule.onNodeWithText("7 of 10 free exports left today").assertIsDisplayed()
+        state = state.copy(limit = 20, free = false, remainingToday = null) // the full version
+        rule.onAllNodesWithTag("exports_left").assertCountEquals(0)
+    }
+
+    @Test fun leftOutInTheFreeVersionExplainsAndOffersTheFullVersion() {
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos, 10), leftOut = 2, limit = 10, free = true, remainingToday = 10)
+        setScreen()
+        rule.onNodeWithText("2 items were left out. A batch holds at most 10 items.").assertIsDisplayed()
+        rule.onNodeWithText("The free version holds 10 items at a time; the full version holds 20.").assertIsDisplayed()
+        rule.onNodeWithText("Full version").performClick()
+        assertEquals(listOf("dismissRejections", "full"), events)
+    }
+
+    @Test fun nothingLeftTodayExplainsTheDailyLimit() {
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos, 10), limit = 10, free = true, remainingToday = 0, dailyLimitNotice = true)
+        setScreen()
+        rule.onNodeWithText("Daily limit reached").assertIsDisplayed()
+        rule.onNodeWithText("The free version exports 10 items a day. The limit resets at midnight. The full version has no daily limit.")
+            .assertIsDisplayed()
+        rule.onNodeWithText("Full version").performClick()
+        assertEquals(listOf("dismissDailyLimit", "full"), events)
+    }
+
+    @Test fun theSummaryGroupsItemsStoppedByTheDailyLimit() {
+        val ten = (1..10).map { MediaItem.Photo("content://test/$it", "IMG_$it.jpg", "image/jpeg", 10, 10) }
+        var set = WorkingSet().add(ten, 10)
+        ten.take(4).forEach { set = set.withStatus(it.source, ItemStatus.Exported) }
+        ten.drop(4).forEach { set = set.withStatus(it.source, ItemStatus.Refused(RefusalReason.DailyLimit)) }
+        state = ImportExportUiState(
+            workingSet = set, limit = 10, free = true, remainingToday = 0,
+            batch = BatchUi.Finished(exported = 4, problems = set.items.drop(4), cancelled = false),
+        )
+        setScreen()
+        rule.onNodeWithText("4 items saved to the gallery.").assertIsDisplayed()
+        rule.onNodeWithText("6 items weren't exported: the free version exports 10 items a day. The limit resets at midnight.").assertIsDisplayed()
+        rule.onAllNodesWithText("IMG_5.jpg: daily limit reached").assertCountEquals(0) // grouped, not one line each
+        rule.onNode(hasText("Full version") and hasAnyAncestor(isDialog())).performClick()
+        assertEquals(listOf("dismiss", "full"), events)
+        state = state.copy(batch = BatchUi.Idle)
+        rule.onNodeWithTag("photo_grid").performScrollToIndex(4) // the first refused item
+        rule.onAllNodesWithText("Not exported").onFirst().assertIsDisplayed() // the refused items stay, marked
+    }
+
     @Test fun leftOutPhotosAreReported() {
-        state = ImportExportUiState(workingSet = WorkingSet().add(photos), leftOut = 3)
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET), leftOut = 3)
         setScreen()
         rule.onNodeWithText("3 items were left out. A batch holds at most 20 items.").assertIsDisplayed()
         rule.onNodeWithText("OK").performClick()
@@ -228,7 +302,7 @@ class ImportExportScreenTest {
             "content://test/v", "VID.mp4", "video/mp4", 1920, 1080, durationUs = 42_500_000, frameRate = 30f, codec = "video/avc",
             creationTimeMillis = Instant.parse("2026-10-04T15:32:34Z").toEpochMilli(),
         )
-        state = ImportExportUiState(workingSet = WorkingSet().add(listOf(photos[0], dated, clip)))
+        state = ImportExportUiState(workingSet = WorkingSet().add(listOf(photos[0], dated, clip), Limits.FULL_WORKING_SET))
         setScreen()
         rule.onNodeWithText("▶ 0:42").assertIsDisplayed()
         rule.onAllNodesWithTag("duration_badge").assertCountEquals(1)
@@ -244,12 +318,12 @@ class ImportExportScreenTest {
         rule.onNodeWithTag("importing").assertIsDisplayed()
         rule.onNodeWithText("Adding photos and videos…").assertIsDisplayed()
         rule.onNodeWithText("Select photos and videos").assertIsNotEnabled()
-        state = state.copy(importing = false, workingSet = WorkingSet().add(photos))
+        state = state.copy(importing = false, workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET))
         rule.onAllNodesWithTag("importing").assertCountEquals(0)
     }
 
     @Test fun itemsWaitingInARunningExportAreQueued() {
-        val set = WorkingSet().add(photos).withStatus(photos[0].source, ItemStatus.Exported).withStatus(photos[1].source, ItemStatus.Exporting)
+        val set = WorkingSet().add(photos, Limits.FULL_WORKING_SET).withStatus(photos[0].source, ItemStatus.Exported).withStatus(photos[1].source, ItemStatus.Exporting)
         state = ImportExportUiState(workingSet = set, batch = BatchUi.Running(1, 3))
         setScreen()
         rule.onNodeWithText("Exported").assertIsDisplayed()
@@ -257,13 +331,13 @@ class ImportExportScreenTest {
         rule.onAllNodesWithTag("exporting_spinner").assertCountEquals(1)
         rule.onNodeWithText("Queued").assertIsDisplayed()
         // Without a running export, a pending item has no label.
-        state = state.copy(workingSet = WorkingSet().add(photos), batch = BatchUi.Idle)
+        state = state.copy(workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET), batch = BatchUi.Idle)
         rule.onAllNodesWithText("Queued").assertCountEquals(0)
     }
 
     @Test fun rejectedVideosNameTheFileAndTheReason() {
         state = ImportExportUiState(
-            workingSet = WorkingSet().add(photos),
+            workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET),
             rejections = listOf(
                 Rejection("dive8k.mp4", RejectionReason.TooLargeForDevice),
                 Rejection("clip.webm", RejectionReason.UnsupportedFormat),
@@ -275,7 +349,7 @@ class ImportExportScreenTest {
     }
 
     @Test fun thumbnailShowsCorrectingThenCorrectedOrUnavailable() {
-        state = ImportExportUiState(workingSet = WorkingSet().add(photos.take(1)))
+        state = ImportExportUiState(workingSet = WorkingSet().add(photos.take(1), Limits.FULL_WORKING_SET))
         setScreen()
         rule.onNodeWithText("Correcting…").assertIsDisplayed()
         rule.onAllNodesWithTag("corrected_thumbnail").assertCountEquals(0)

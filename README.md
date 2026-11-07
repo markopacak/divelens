@@ -4,7 +4,7 @@ Android app that fixes underwater photos and videos (blue-green cast, missing re
 
 ## Status
 
-Early development. Today the app imports photos and videos through the system photo picker (up to 20 items per batch) and exports colour-corrected copies to the gallery (Pictures/DiveLens): photos at full resolution with their date, camera and orientation metadata, videos as MP4 at their original resolution, frame rate and orientation, with the audio unchanged and the creation date kept. Exports never contain location. The correction is automatic: it rebuilds red from green and blue and stretches green and blue contrast, with parameters estimated per photo, and runs on the GPU (with a CPU fallback for photos). For videos the parameters are sampled every second and smoothed over time, so the colour follows depth without flicker. The grid shows corrected thumbnails with the date taken and, for videos, the duration. A full-screen viewer zooms photos to real pixels, plays videos with the correction applied live, shows the original while you press and hold, and has a strength slider per item (with "Apply to all") that the thumbnails, playback and export follow. The export runs in the background with a progress notification. Exports carry a small diveLENS watermark in the bottom-right corner, on by default; anyone can turn it off in Settings & help. The app icon, colours and watermark come from [`docs/brand/`](docs/brand/BRAND.md). Further sliders come later.
+Early development. Today the app imports photos and videos through the system photo picker (up to 10 items per batch in the free version, 20 in the full version) and exports colour-corrected copies to the gallery (Pictures/DiveLens): photos at full resolution with their date, camera and orientation metadata, videos as MP4 at their original resolution, frame rate and orientation, with the audio unchanged and the creation date kept. Exports never contain location. The correction is automatic: it rebuilds red from green and blue and stretches green and blue contrast, with parameters estimated per photo, and runs on the GPU (with a CPU fallback for photos). For videos the parameters are sampled every second and smoothed over time, so the colour follows depth without flicker. The grid shows corrected thumbnails with the date taken and, for videos, the duration. A full-screen viewer zooms photos to real pixels, plays videos with the correction applied live, shows the original while you press and hold, and has a strength slider per item (with "Apply to all") that the thumbnails, playback and export follow. The export runs in the background with a progress notification. Exports carry a small diveLENS watermark in the bottom-right corner, on by default; anyone can turn it off in Settings & help. The app icon, colours and watermark come from [`docs/brand/`](docs/brand/BRAND.md). The free version exports 10 items a day; the full version is a one-time Google Play purchase that removes the daily limit and holds 20 items (see [Purchases](#purchases)). Further sliders come later.
 
 Planned work is tracked as [OpenSpec](https://github.com/Fission-AI/OpenSpec) changes in `openspec/changes/`.
 
@@ -38,6 +38,22 @@ python3 -m venv .venv && .venv/bin/pip install -r tools/reference/requirements.t
 ```
 
 Without `trainingset/reference/`, `ReferenceSetTest` is skipped, so contributors and CI need nothing extra.
+
+## Purchases
+
+The free version's limits and the full version live in `app/src/main/java/com/markopacak/divelens/licensing/`. Debug and release builds use different stores:
+
+- **Debug builds** use a fake store with no Google code and no account, so anyone can build and try purchases. Tapping **Full version** or a donation opens a "Simulated Google Play" dialog: Buy, Pay later, Fail or Cancel. **Settings & help › Developer (debug build)** switches between free and full, refunds (silently, noticed at the next return to the app), completes a pending payment, turns the store off to simulate Google Play unreachable, and sets today's export count to 0, 7 or 10.
+- **Release builds** use Google Play Billing (`billing-ktx`, release only). Purchases only work for a build installed from Google Play, at least on the internal testing track, with a licence tester. A locally built release says "not available right now" and runs as the free version.
+
+Play Console products (prices are set in Play Console, never in code):
+
+| Product ID | Type | Purpose |
+|---|---|---|
+| `full_version` | One-time, non-consumable | The full version (1.19 CHF / 1.19 EUR) |
+| `tip_small` | One-time, consumed by the app | Donation |
+| `tip_medium` | One-time, consumed by the app | Donation |
+| `tip_large` | One-time, consumed by the app | Donation |
 
 ## Release signing
 

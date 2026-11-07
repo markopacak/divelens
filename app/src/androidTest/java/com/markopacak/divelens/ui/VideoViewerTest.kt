@@ -26,6 +26,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import com.markopacak.divelens.licensing.Limits
 import com.markopacak.divelens.TestMedia
 import com.markopacak.divelens.analysis.CorrectionParams
 import com.markopacak.divelens.analysis.CorrectionTimeline
@@ -80,7 +81,7 @@ class VideoViewerTest {
     @Before fun setUp() {
         TestMedia.deleteAll()
         video = runBlocking { MediaImporter(TestMedia.resolver).import(listOf(TestMedia.longVideo())).accepted.single() as MediaItem.Video }
-        screen = ImportExportUiState(workingSet = WorkingSet().add(listOf(video, photo)), viewing = 0)
+        screen = ImportExportUiState(workingSet = WorkingSet().add(listOf(video, photo), Limits.FULL_WORKING_SET), viewing = 0)
         val params = CorrectionParams(floatArrayOf(1f, 1.5f, -0.7f, -0.06f, 0f, 2f, 0f, -0.5f, 0f, 0f, 1.6f, -0.6f), V1Model.DEFAULT_STRENGTH)
         val timeline = MutableStateFlow(CorrectionTimeline(video.durationUs).withSample(0, params).completed())
         val support = VideoSupport(

@@ -12,6 +12,8 @@ import com.markopacak.divelens.correction.ViewerRenderer
 import com.markopacak.divelens.export.ItemResult
 import com.markopacak.divelens.importer.ImportResult
 import com.markopacak.divelens.importer.Rejection
+import com.markopacak.divelens.licensing.LicenceState
+import com.markopacak.divelens.licensing.Limits
 import com.markopacak.divelens.media.ItemStatus
 import com.markopacak.divelens.media.MediaItem
 import com.markopacak.divelens.media.WorkingItem
@@ -35,8 +37,15 @@ data class ImportExportUiState(
     val workingSet: WorkingSet = WorkingSet(),
     val importing: Boolean = false,
     val rejections: List<Rejection> = emptyList(),
-    /** Photos of the last selections that did not fit within [WorkingSet.LIMIT]. */
+    /** Photos of the last selections that did not fit within [limit]. */
     val leftOut: Int = 0,
+    /** How many items the working set holds in this version: 10 free, 20 full (add-free-limits-and-purchase D6). */
+    val limit: Int = Limits.FULL_WORKING_SET,
+    val free: Boolean = false,
+    /** Free exports left today; null in the full version, which has no daily limit. */
+    val remainingToday: Int? = null,
+    /** Export was tapped with no free exports left today: nothing started (add-free-limits-and-purchase D7). */
+    val dailyLimitNotice: Boolean = false,
     /** Index in the working set of the photo shown full screen, or null when the grid is shown. */
     val viewing: Int? = null,
     val batch: BatchUi = BatchUi.Idle,
@@ -55,6 +64,10 @@ class WorkingSession(
     private val previewStore: PhotoPreviewStore<Bitmap>? = null,
     /** Renders the full-screen viewer; null disables it. */
     val viewer: ViewerRenderer? = null,
+    /** The licence: the working-set limit and the daily count follow it. The full version when not given. */
+    private val licence: StateFlow<LicenceState> = MutableStateFlow(LicenceState(full = true)),
+    /** Free exports left today (add-free-limits-and-purchase D4). */
+    private val remainingToday: () -> Int = { Limits.FREE_DAILY_EXPORTS },
 ) {
 
     private val _state = MutableStateFlow(ImportExportUiState())
@@ -70,6 +83,8 @@ class WorkingSession(
     val adjustable: Boolean get() = previewStore != null
 
     init {
+        // A lowered limit never removes items; it only stops adding more (spec "Limit drops below the working set").
+        scope.launch { licence.collect { l -> _state.update { it.withLicence(l) } } }
         if (previewStore != null) {
             scope.launch {
                 _state.map { s -> s.workingSet.items.map { it.item.toStoreItem() } }.distinctUntilChanged().collect { previewStore.setItems(it) }
@@ -83,7 +98,7 @@ class WorkingSession(
         scope.launch {
             val result = importPhotos(uris)
             _state.update {
-                val added = it.workingSet.addWithinLimit(result.accepted)
+                val added = it.workingSet.addWithinLimit(result.accepted, it.limit)
                 it.copy(
                     importing = false,
                     workingSet = added.set,
@@ -139,6 +154,11 @@ class WorkingSession(
         if (isRunning()) return
         val items = _state.value.workingSet.items.map { it.item }
         if (items.isEmpty()) return
+        // Nothing left today: explain instead of starting a batch that would refuse every item.
+        if (!licence.value.full && remainingToday() == 0) {
+            _state.update { it.withLicence(licence.value).copy(dailyLimitNotice = true) }
+            return
+        }
         _state.update { s ->
             var set = s.workingSet
             items.forEach { set = set.withStatus(it.source, ItemStatus.Pending) }
@@ -152,6 +172,8 @@ class WorkingSession(
     }
 
     fun cancel() = controller.cancel()
+
+    fun dismissDailyLimit() = _state.update { it.copy(dailyLimitNotice = false) }
 
     fun dismissSummary() {
         controller.acknowledge()
@@ -175,12 +197,21 @@ class WorkingSession(
         })
         val exported = set.items.count { it.status == ItemStatus.Exported }
         val problems = set.items.filter { it.status is ItemStatus.Failed || it.status is ItemStatus.Refused }
-        return copy(workingSet = set, batch = BatchUi.Finished(exported, problems, cancelled))
+        return copy(workingSet = set, batch = BatchUi.Finished(exported, problems, cancelled)).withLicence(licence.value)
     }
+
+    /** Reads today's free exports again: after a batch, when the app returns, or past midnight. */
+    fun refreshRemaining() = _state.update { it.withLicence(licence.value) }
+
+    private fun ImportExportUiState.withLicence(l: LicenceState) = copy(
+        limit = if (l.full) Limits.FULL_WORKING_SET else Limits.FREE_WORKING_SET,
+        free = !l.full,
+        remainingToday = if (l.full) null else remainingToday(),
+    )
 
     private fun ItemResult.toStatus(): ItemStatus = when (this) {
         is ItemResult.Exported -> ItemStatus.Exported
-        is ItemResult.Refused -> ItemStatus.Refused(message)
+        is ItemResult.Refused -> ItemStatus.Refused(reason)
         is ItemResult.Failed -> ItemStatus.Failed(reason)
     }
 }

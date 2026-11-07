@@ -23,6 +23,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import com.markopacak.divelens.licensing.Limits
 import com.markopacak.divelens.correction.Layer
 import com.markopacak.divelens.correction.ViewerPhoto
 import com.markopacak.divelens.correction.ViewerRenderer
@@ -50,7 +51,7 @@ class ViewerScreenTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
     private val photos = (1..5).map { MediaItem.Photo("content://test/$it", "IMG_$it.jpg", "image/jpeg", 400, 300) }
-    private var state by mutableStateOf(ImportExportUiState(workingSet = WorkingSet().add(photos)))
+    private var state by mutableStateOf(ImportExportUiState(workingSet = WorkingSet().add(photos, Limits.FULL_WORKING_SET)))
     private val pages = mutableListOf<Int>()
     private var strengths by mutableStateOf(emptyMap<String, Float>())
     private val default = 0.78f

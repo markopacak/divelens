@@ -70,6 +70,23 @@ checks that every library the app ships is covered by one of them.
   developers, https://checkerframework.org, MIT License.
   Maven groups: org.checkerframework
 
+- Google Play Billing Library (billing, billing-ktx) and the Google Play services
+  client libraries it depends on (base, basement, tasks, location), Copyright
+  Google LLC, https://developer.android.com/google/play/billing, Android
+  Software Development Kit License. Release builds only; used for the full
+  version purchase and donations. Conveyed under the section 7 permission above.
+  Maven groups: com.android.billingclient, com.google.android.gms
+
+- Google Android DataTransport and Firebase encoders (dependencies of the Play
+  Billing Library), Copyright Google LLC, https://github.com/firebase/firebase-android-sdk,
+  Apache License, Version 2.0. Release builds only.
+  Maven groups: com.google.android.datatransport, com.google.firebase
+
+- javax.inject (JSR-330), Copyright The JSR-330 Expert Group,
+  https://github.com/javax-inject/javax-inject, Apache License, Version 2.0.
+  Release builds only (a dependency of the Play Billing Library).
+  Maven groups: javax.inject
+
 - Material Icons path data (settings, help, arrow back, expand, touch), Copyright
   Google LLC, https://github.com/google/material-design-icons,
   Apache License, Version 2.0. Drawn as vector icons in the help screens.

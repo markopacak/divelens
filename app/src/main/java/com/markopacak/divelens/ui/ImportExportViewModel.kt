@@ -27,4 +27,6 @@ class ImportExportViewModel(val session: WorkingSession) : ViewModel() {
     fun export() = session.export()
     fun cancel() = session.cancel()
     fun dismissSummary() = session.dismissSummary()
+
+    fun dismissDailyLimit() = session.dismissDailyLimit()
 }

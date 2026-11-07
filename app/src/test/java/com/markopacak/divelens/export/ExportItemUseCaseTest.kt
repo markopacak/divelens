@@ -2,6 +2,7 @@ package com.markopacak.divelens.export
 
 import com.markopacak.divelens.media.FailureReason
 import com.markopacak.divelens.media.MediaItem
+import com.markopacak.divelens.media.RefusalReason
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -24,8 +25,8 @@ class ExportItemUseCaseTest {
     }
 
     @Test fun refusedItemIsNotWritten() = runTest {
-        val result = ExportItemUseCase(gate(GateDecision.Refused("trial over")), okWriter)(photo)
-        assertEquals(ItemResult.Refused("trial over"), result)
+        val result = ExportItemUseCase(gate(GateDecision.Refused(RefusalReason.DailyLimit)), okWriter)(photo)
+        assertEquals(ItemResult.Refused(RefusalReason.DailyLimit), result)
         assertEquals(listOf("check"), calls)
     }
 

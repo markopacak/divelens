@@ -4,6 +4,7 @@ import android.system.ErrnoException
 import android.system.OsConstants
 import com.markopacak.divelens.media.FailureReason
 import com.markopacak.divelens.media.MediaItem
+import com.markopacak.divelens.media.RefusalReason
 import kotlin.coroutines.cancellation.CancellationException
 
 /** True when this failure, or one of its causes, is the storage running full. */
@@ -23,7 +24,7 @@ fun interface PhotoWriter {
 
 sealed interface ItemResult {
     data class Exported(val uri: String) : ItemResult
-    data class Refused(val message: String) : ItemResult
+    data class Refused(val reason: RefusalReason) : ItemResult
     data class Failed(val reason: FailureReason) : ItemResult
 }
 
@@ -36,7 +37,7 @@ class ExportItemUseCase(
 
     suspend operator fun invoke(item: MediaItem, options: ExportOptions = ExportOptions.PLAIN): ItemResult {
         val decision = gate.check(item)
-        if (decision is GateDecision.Refused) return ItemResult.Refused(decision.message)
+        if (decision is GateDecision.Refused) return ItemResult.Refused(decision.reason)
         val uri = try {
             when (item) {
                 is MediaItem.Photo -> writer.write(item, options)

@@ -60,9 +60,11 @@ import com.markopacak.divelens.R
 import com.markopacak.divelens.correction.PreviewEntry
 import com.markopacak.divelens.correction.ViewerRenderer
 import com.markopacak.divelens.importer.RejectionReason
+import com.markopacak.divelens.licensing.Limits
 import com.markopacak.divelens.media.FailureReason
 import com.markopacak.divelens.media.ItemStatus
 import com.markopacak.divelens.media.MediaItem
+import com.markopacak.divelens.media.RefusalReason
 import com.markopacak.divelens.media.WorkingItem
 import com.markopacak.divelens.media.WorkingSet
 import com.markopacak.divelens.ui.help.HelpIcons
@@ -88,7 +90,11 @@ fun ImportExportScreen(
     videos: VideoSupport? = null,
     onOpenSettings: (() -> Unit)? = null,
     guidance: ViewerGuidance? = null,
+    /** Offers the full version from the free version's limit messages (add-free-limits-and-purchase D6, D7). */
+    onFullVersion: (() -> Unit)? = null,
+    onDismissDailyLimit: () -> Unit = {},
 ) {
+    val offerFull = onFullVersion.takeIf { state.free }
     val items = state.workingSet.items
     val running = state.batch as? BatchUi.Running
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
@@ -157,15 +163,28 @@ fun ImportExportScreen(
                         Text(stringResource(R.string.cancel))
                     }
                 } else {
-                    if (state.workingSet.isFull) {
+                    if (state.workingSet.isFull(state.limit)) {
                         Text(
-                            stringResource(R.string.limit_reached, WorkingSet.LIMIT),
+                            if (state.free) stringResource(R.string.limit_reached_free, state.limit, Limits.FULL_WORKING_SET)
+                            else stringResource(R.string.limit_reached, state.limit),
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 12.dp),
+                            modifier = Modifier.padding(top = 12.dp).testTag("limit_reached"),
+                        )
+                        if (offerFull != null) {
+                            TextButton(onClick = offerFull, modifier = Modifier.testTag("limit_full_version")) {
+                                Text(stringResource(R.string.full_version))
+                            }
+                        }
+                    }
+                    state.remainingToday?.let { left ->
+                        Text(
+                            pluralStringResource(R.plurals.exports_left_today, left, left, Limits.FREE_DAILY_EXPORTS),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 12.dp).testTag("exports_left"),
                         )
                     }
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onSelectPhotos, enabled = !state.workingSet.isFull && !state.importing) {
+                        OutlinedButton(onClick = onSelectPhotos, enabled = !state.workingSet.isFull(state.limit) && !state.importing) {
                             Text(stringResource(R.string.add_photos))
                         }
                         TextButton(onClick = onClear) { Text(stringResource(R.string.clear)) }
@@ -214,16 +233,32 @@ fun ImportExportScreen(
             )
         }
     }
-    (state.batch as? BatchUi.Finished)?.let { SummaryDialog(it, onDismissSummary) }
+    (state.batch as? BatchUi.Finished)?.let { SummaryDialog(it, onDismissSummary, offerFull) }
+    if (state.dailyLimitNotice) {
+        AlertDialog(
+            onDismissRequest = onDismissDailyLimit,
+            confirmButton = { TextButton(onClick = onDismissDailyLimit) { Text(stringResource(R.string.ok)) } },
+            dismissButton = offerFull?.let { full ->
+                { TextButton(onClick = { onDismissDailyLimit(); full() }) { Text(stringResource(R.string.full_version)) } }
+            },
+            title = { Text(stringResource(R.string.daily_limit_title)) },
+            text = { Text(stringResource(R.string.daily_limit_message, Limits.FREE_DAILY_EXPORTS)) },
+            modifier = Modifier.testTag("daily_limit_dialog"),
+        )
+    }
     if ((state.rejections.isNotEmpty() || state.leftOut > 0) && state.batch !is BatchUi.Finished) {
         AlertDialog(
             onDismissRequest = onDismissRejections,
             confirmButton = { TextButton(onClick = onDismissRejections) { Text(stringResource(R.string.ok)) } },
+            dismissButton = if (state.leftOut > 0 && offerFull != null) {
+                { TextButton(onClick = { onDismissRejections(); offerFull() }) { Text(stringResource(R.string.full_version)) } }
+            } else null,
             title = { Text(stringResource(R.string.rejected_title)) },
             text = {
                 Column {
                     if (state.leftOut > 0) {
-                        Text(pluralStringResource(R.plurals.left_out, state.leftOut, state.leftOut, WorkingSet.LIMIT))
+                        Text(pluralStringResource(R.plurals.left_out, state.leftOut, state.leftOut, state.limit))
+                        if (state.free) Text(stringResource(R.string.left_out_free, state.limit, Limits.FULL_WORKING_SET))
                     }
                     state.rejections.forEach { Text("${it.displayName}: ${stringResource(it.reason.label())}") }
                 }
@@ -312,20 +347,31 @@ private fun statusLabel(status: ItemStatus, batchRunning: Boolean): String? = wh
 }
 
 @Composable
-private fun SummaryDialog(summary: BatchUi.Finished, onDismiss: () -> Unit) {
+private fun SummaryDialog(summary: BatchUi.Finished, onDismiss: () -> Unit, onFullVersion: (() -> Unit)?) {
+    // Items the daily limit stopped are one paragraph, not one line each (add-free-limits-and-purchase D7).
+    val limited = summary.problems.count { (it.status as? ItemStatus.Refused)?.reason == RefusalReason.DailyLimit }
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
+        dismissButton = if (limited > 0 && onFullVersion != null) {
+            { TextButton(onClick = { onDismiss(); onFullVersion() }) { Text(stringResource(R.string.full_version)) } }
+        } else null,
         title = {
             Text(stringResource(if (summary.cancelled) R.string.summary_cancelled_title else R.string.summary_title))
         },
         text = {
             Column {
                 Text(pluralStringResource(R.plurals.summary_exported, summary.exported, summary.exported))
-                summary.problems.forEach { problem ->
+                if (limited > 0) {
+                    Text(
+                        pluralStringResource(R.plurals.summary_daily_limit, limited, limited, Limits.FREE_DAILY_EXPORTS),
+                        modifier = Modifier.padding(top = 8.dp).testTag("summary_daily_limit"),
+                    )
+                }
+                summary.problems.filterNot { (it.status as? ItemStatus.Refused)?.reason == RefusalReason.DailyLimit }.forEach { problem ->
                     val reason = when (val s = problem.status) {
                         is ItemStatus.Failed -> stringResource(s.reason.label())
-                        is ItemStatus.Refused -> s.message
+                        is ItemStatus.Refused -> stringResource(s.reason.label())
                         else -> ""
                     }
                     Text("${problem.item.displayName}: $reason")
@@ -340,6 +386,10 @@ private fun FailureReason.label(): Int = when (this) {
     FailureReason.UnreadableSource -> R.string.reason_unreadable
     FailureReason.OutOfMemory -> R.string.reason_memory
     FailureReason.WriteFailed -> R.string.reason_write
+}
+
+private fun RefusalReason.label(): Int = when (this) {
+    RefusalReason.DailyLimit -> R.string.reason_daily_limit
 }
 
 private fun RejectionReason.label(): Int = when (this) {

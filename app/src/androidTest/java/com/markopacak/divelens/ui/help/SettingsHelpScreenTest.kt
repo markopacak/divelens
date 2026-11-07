@@ -170,7 +170,7 @@ class SettingsHelpScreenTest {
         scrollTo("Show tips again")
         rule.onNodeWithText("Show tips again").performClick()
         rule.onNodeWithText("The tips will show again in the viewer.").assertIsDisplayed()
-        scrollTo("Source code")
+        scrollTo("Terms of use") // past "Source code", so the snackbar never covers it on a short screen
         rule.onNodeWithText("Source code").performClick()
         rule.onNodeWithContentDescription("Back").performClick()
         assertEquals(listOf("feedback", Links.ISSUES, "tips", Links.REPOSITORY, "back"), events)

@@ -77,6 +77,8 @@ dependencies {
     implementation(libs.androidx.media3.effect)
     implementation(libs.androidx.media3.exoplayer)
     implementation(project(":core:analysis"))
+    // Google Play Billing ships only in release builds; debug builds use a fake store (add-free-limits-and-purchase D1).
+    releaseImplementation(libs.billing.ktx)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))

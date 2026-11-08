@@ -254,7 +254,7 @@ class ImportExportScreenTest {
         setScreen()
         rule.onNodeWithText("2 items were left out. A batch holds at most 10 items.").assertIsDisplayed()
         rule.onNodeWithText("The free version holds 10 items at a time; the full version holds 20.").assertIsDisplayed()
-        rule.onNodeWithText("Full version").performClick()
+        rule.onNodeWithText("Get full version").performClick()
         assertEquals(listOf("dismissRejections", "full"), events)
     }
 
@@ -264,7 +264,7 @@ class ImportExportScreenTest {
         rule.onNodeWithText("Daily limit reached").assertIsDisplayed()
         rule.onNodeWithText("The free version exports 10 items a day. The limit resets at midnight. The full version has no daily limit.")
             .assertIsDisplayed()
-        rule.onNodeWithText("Full version").performClick()
+        rule.onNodeWithText("Get full version").performClick()
         assertEquals(listOf("dismissDailyLimit", "full"), events)
     }
 
@@ -281,7 +281,7 @@ class ImportExportScreenTest {
         rule.onNodeWithText("4 items saved to the gallery.").assertIsDisplayed()
         rule.onNodeWithText("6 items weren't exported: the free version exports 10 items a day. The limit resets at midnight.").assertIsDisplayed()
         rule.onAllNodesWithText("IMG_5.jpg: daily limit reached").assertCountEquals(0) // grouped, not one line each
-        rule.onNode(hasText("Full version") and hasAnyAncestor(isDialog())).performClick()
+        rule.onNode(hasText("Get full version") and hasAnyAncestor(isDialog())).performClick()
         assertEquals(listOf("dismiss", "full"), events)
         state = state.copy(batch = BatchUi.Idle)
         rule.onNodeWithTag("photo_grid").performScrollToIndex(4) // the first refused item

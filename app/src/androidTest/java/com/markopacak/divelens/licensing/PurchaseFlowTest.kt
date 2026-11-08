@@ -50,7 +50,7 @@ class PurchaseFlowTest {
 
     @Test fun buyingUnlocksAndThanks() {
         openSettings()
-        rule.onNodeWithText("Full version · CHF 1.19").assertIsDisplayed()
+        rule.onNodeWithText("Get full version · CHF 1.19").assertIsDisplayed()
         rule.onNodeWithText("No daily limit and 20 items at a time. One-time purchase.").assertIsDisplayed()
         rule.onNodeWithTag("full_version_entry").performClick()
         waitForTag("fake_sheet")

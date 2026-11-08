@@ -66,7 +66,7 @@
         <item quantity="one">%1$d of %2$d free exports left today</item>
         <item quantity="other">%1$d of %2$d free exports left today</item>
     </plurals>
-    <string name="full_version">Full version</string>
+    <string name="full_version">Get full version</string>
     <string name="daily_limit_title">Daily limit reached</string>
     <string name="daily_limit_message">The free version exports %d items a day. The limit resets at midnight. The full version has no daily limit.</string>
     <plurals name="summary_daily_limit">
@@ -92,7 +92,7 @@
     <string name="section_support">Support DiveLens</string>
     <string name="section_developer">Developer (debug build)</string>
     <!-- Full version and donations (add-free-limits-and-purchase D8). -->
-    <string name="full_version_price">Full version · %s</string>
+    <string name="full_version_price">Get full version · %s</string>
     <string name="full_version_detail">No daily limit and 20 items at a time. One-time purchase.</string>
     <string name="full_version_waiting">Waiting for payment. It unlocks as soon as Google Play confirms it.</string>
     <string name="full_version_active">Full version active</string>

@@ -46,7 +46,7 @@
 
   Verify: results recorded in this task, and the full JVM and instrumented suites pass.
   - Result (2026-11-07): the maintainer ran every item above on the Xiaomi 14T with the debug build; all worked as described. Suites: 161 app JVM tests and 34 `:core:analysis` tests pass; 150 instrumented tests on the phone (149 in the full run, and `theSummaryGroupsItemsStoppedByTheDailyLimit` after making it scroll to the first refused item). On the emulator, `SettingsHelpScreenTest.entriesCallTheirActions` now scrolls past the snackbar.
-- [ ] 5.2 Real Google Play purchase check, **blocked until the maintainer has a Play Console account** with `full_version` (1.19 CHF / 1.19 EUR) and the three tips set up, a signed build on the internal testing track, and a licence-tester account. With the build installed from Play:
+- [x] 5.2 Real Google Play purchase check, **blocked until the maintainer has a Play Console account** with `full_version` (1.19 CHF / 1.19 EUR) and the three tips set up, a signed build on the internal testing track, and a licence-tester account. With the build installed from Play:
   - buy the full version with a test card;
   - cancel a purchase;
   - make a slow-payment test purchase and let it complete;
@@ -55,6 +55,7 @@
   - donate once.
 
   Verify: results recorded in this task. Any difference from the fake store becomes a fix in `PlayStore` before release.
+  - Result (2026-11-10): Play Console has `full_version` (1.19 CHF / 1.19 EUR) and the three tips, each with one "Buy" purchase option, and the maintainer's account is a licence tester. With version code 2 installed from the internal testing track, the maintainer ran every item above on the Xiaomi 14T with Play's test cards: a declined card shows "Purchase failed", a cancelled sheet shows nothing, the slow card shows "Waiting for payment" and then unlocks, a refund with the entitlement removed returns the app to the free version, a reinstall restores the purchase, and the same tip can be given twice. All worked as described; nothing differed from the fake store, so `PlayStore` is unchanged.
 
 ## Workflow follow-up
 
